@@ -152,7 +152,7 @@ const CreateQuiz = () => {
     }));
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
 
     if (quizData.title.trim() === '') {
@@ -173,16 +173,16 @@ const CreateQuiz = () => {
       };
 
       if (editingQuiz) {
-        updateQuiz(editingQuiz.id, quizToSave);
+        await updateQuiz(editingQuiz.id, quizToSave);
         alert('Quiz został pomyślnie zaktualizowany!');
       } else {
         quizToSave.createdAt = new Date().toISOString();
-        addQuiz(quizToSave);
+        await addQuiz(quizToSave);
         alert('Quiz został pomyślnie utworzony!');
       }
       navigate('/home');
     } catch (error) {
-      alert('Wystąpił błąd podczas tworzenia quizu. Spróbuj ponownie.');
+      alert('Wystąpił błąd podczas ' + (editingQuiz ? 'aktualizacji' : 'tworzenia') + ' quizu: ' + error.message);
     } finally {
       setIsSubmitting(false);
     }

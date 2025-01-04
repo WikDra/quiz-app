@@ -1,0 +1,76 @@
+{
+  "quizzes": [
+    {
+      "id": 1,
+      "title": "Quiz o JavaScript",
+      "description": "Sprawdź swoją wiedzę o JavaScript!",
+      "category": "programming",
+      "difficulty": "medium",
+      "timeLimit": 30,
+      "createdAt": "2024-01-04T19:00:00.000Z",
+      "lastModified": "2024-01-04T19:00:00.000Z",
+      "questions": [
+        {
+          "id": 1,
+          "question": "Co to jest JavaScript?",
+          "options": [
+            "Język programowania",
+            "System operacyjny",
+            "Baza danych",
+            "Framework"
+          ],
+          "correctAnswer": 0,
+          "explanation": "JavaScript to język programowania wysokiego poziomu, interpretowany lub kompilowany w czasie rzeczywistym."
+        },
+        {
+          "id": 2,
+          "question": "Która z poniższych NIE jest zmienną w JavaScript?",
+          "options": [
+            "var",
+            "let",
+            "const",
+            "variable"
+          ],
+          "correctAnswer": 3,
+          "explanation": "W JavaScript mamy trzy słowa kluczowe do deklaracji zmiennych: var, let i const. 'variable' nie jest poprawnym słowem kluczowym."
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Quiz o HTML",
+      "description": "Test znajomości podstaw HTML",
+      "category": "programming",
+      "difficulty": "easy",
+      "timeLimit": 20,
+      "createdAt": "2024-01-04T19:00:00.000Z",
+      "lastModified": "2024-01-04T19:00:00.000Z",
+      "questions": [
+        {
+          "id": 1,
+          "question": "Co oznacza skrót HTML?",
+          "options": [
+            "Hyper Text Markup Language",
+            "High Tech Modern Language",
+            "Hyper Transfer Markup Logic",
+            "Home Tool Markup Language"
+          ],
+          "correctAnswer": 0,
+          "explanation": "HTML to skrót od Hyper Text Markup Language - języka znaczników używanego do tworzenia stron internetowych."
+        },
+        {
+          "id": 2,
+          "question": "Który tag HTML tworzy nagłówek pierwszego poziomu?",
+          "options": [
+            "<header>",
+            "<h1>",
+            "<heading>",
+            "<head>"
+          ],
+          "correctAnswer": 1,
+          "explanation": "Tag <h1> jest używany do tworzenia nagłówka pierwszego poziomu w HTML."
+        }
+      ]
+    }
+  ]
+}

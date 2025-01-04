@@ -37,8 +37,11 @@ const SolveQuiz = () => {
       try {
         const quizData = await getQuizById(id);
         console.log('Loaded quiz data:', quizData);
-        setQuiz(quizData);
-        setTimeLeft(quizData.timePerQuestion);
+        setQuiz({
+          ...quizData,
+          timePerQuestion: quizData.timeLimit || 30
+        });
+        setTimeLeft(quizData.timeLimit || 30);
         setError(null);
       } catch (err) {
         console.error('Error loading quiz:', err);

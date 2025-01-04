@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { useQuiz } from '../context/QuizContext';
@@ -12,7 +12,7 @@ import '../styles/HomePage.css';
 
 const HomePage = () => {
   const { user, logout } = useAuth();
-  const { quizzes, deleteQuiz } = useQuiz();
+  const { quizzes, deleteQuiz, loading, error, refreshQuizzes } = useQuiz();
   const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState('');
   const [notifications, setNotifications] = useState([
@@ -24,18 +24,21 @@ const HomePage = () => {
   const [selectedQuiz, setSelectedQuiz] = useState(null);
   const [selectedCategory, setSelectedCategory] = useState('');
 
-  const defaultQuizzes = [];
+  // Odświeżanie quizów przy pierwszym renderowaniu
+  useEffect(() => {
+    refreshQuizzes();
+  }, [refreshQuizzes]);
 
-  const sortedQuizzes = [...quizzes].sort((a, b) => 
+  const sortedQuizzes = [...(quizzes || [])].sort((a, b) => 
     new Date(b.createdAt) - new Date(a.createdAt)
   );
 
-  const promotedQuizzes = [...defaultQuizzes, ...sortedQuizzes.map(quiz => ({
+  const promotedQuizzes = sortedQuizzes.map(quiz => ({
     ...quiz,
-    duration: `${quiz.timeLimit} s`,
+    duration: `${quiz.timeLimit || 30} s`,
     participants: 0,
     difficulty: quiz.difficulty === 'easy' ? 'Łatwy' : quiz.difficulty === 'medium' ? 'Średni' : 'Trudny'
-  }))];
+  }));
 
   const onlineUsers = [
     { id: 1, name: 'Anna K.', avatar: 'https://i.pravatar.cc/100?img=1', status: 'Rozwiązuje quiz' },
@@ -82,19 +85,25 @@ const HomePage = () => {
   };
 
   const isCustomQuiz = useCallback((quizId) => {
-    return quizId.startsWith('user-');
+    // W nowym API wszystkie quizy są edytowalne
+    return true;
   }, []);
 
   const handleQuizClick = (quiz) => {
     setSelectedQuiz(quiz);
   };
 
-  const handleDeleteQuiz = (e, quiz) => {
+  const handleDeleteQuiz = async (e, quiz) => {
     e.stopPropagation();
     if (window.confirm(`Czy na pewno chcesz usunąć quiz "${quiz.title}"? Tej operacji nie można cofnąć.`)) {
-      deleteQuiz(quiz.id);
-      if (selectedQuiz?.id === quiz.id) {
-        setSelectedQuiz(null);
+      try {
+        await deleteQuiz(quiz.id);
+        if (selectedQuiz?.id === quiz.id) {
+          setSelectedQuiz(null);
+        }
+        refreshQuizzes(); // Odśwież listę quizów po usunięciu
+      } catch (error) {
+        alert('Wystąpił błąd podczas usuwania quizu. Spróbuj ponownie.');
       }
     }
   };
