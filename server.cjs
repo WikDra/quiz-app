@@ -32,7 +32,27 @@ app.put('/users.json', async (req, res) => {
     res.status(500).json({ error: 'Błąd podczas zapisu pliku' });
   }
 });
+app.get('/quiz.json', async (req, res) => {
+  try {
+    const data = await fs.readFile(path.join(__dirname, 'public', 'users.json'), 'utf8');
+    res.json(JSON.parse(data));
+  } catch (error) {
+    res.status(500).json({ error: 'Błąd podczas odczytu pliku' });
+  }
+});
 
+// Endpoint do aktualizacji użytkowników
+app.put('/quiz.json', async (req, res) => {
+  try {
+    await fs.writeFile(
+      path.join(__dirname, 'public', 'users.json'),
+      JSON.stringify(req.body, null, 2)
+    );
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: 'Błąd podczas zapisu pliku' });
+  }
+});
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
 });

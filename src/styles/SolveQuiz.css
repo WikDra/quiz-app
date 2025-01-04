@@ -313,3 +313,73 @@
     transform: translateX(0);
   }
 }
+
+.scores-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(26, 34, 52, 0.95);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+  animation: fadeIn 0.3s ease;
+}
+
+.score-table {
+  background-color: #2a3447;
+  border-radius: 12px;
+  padding: 1.5rem;
+  width: 100%;
+  max-width: 600px;
+  margin: 1rem;
+  animation: scaleIn 0.3s ease;
+}
+
+.score-table h3 {
+  color: #ffc107;
+  text-align: center;
+  margin-bottom: 1rem;
+  font-size: 1.5rem;
+}
+
+.score-table-content {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.score-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.75rem;
+  background-color: #1a2234;
+  border-radius: 8px;
+  transition: transform 0.2s ease;
+}
+
+.score-row:hover {
+  transform: translateX(5px);
+}
+
+.score-position {
+  color: #ffc107;
+  font-weight: bold;
+  min-width: 2.5rem;
+}
+
+.score-name {
+  flex: 1;
+  margin: 0 1rem;
+  color: #e0e0e0;
+}
+
+.score-value {
+  color: #4caf50;
+  font-weight: bold;
+  min-width: 4rem;
+  text-align: right;
+}
