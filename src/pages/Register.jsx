@@ -1,11 +1,45 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback, memo } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import '../styles/Auth.css';
 
+// Reużywalne komponenty z Login.jsx
+const AuthHeader = memo(({ title }) => (
+  <div className="auth-header">
+    <h2>{title}</h2>
+    <div className="logo">CyberQuiz</div>
+  </div>
+));
+
+const ErrorMessage = memo(({ message }) => 
+  message ? <div className="error-message">{message}</div> : null
+);
+
+const FormField = memo(({ 
+  id, 
+  type = 'text', 
+  label, 
+  value, 
+  onChange, 
+  placeholder 
+}) => (
+  <div className="form-group">
+    <label htmlFor={id}>{label}</label>
+    <input
+      type={type}
+      id={id}
+      name={id}
+      value={value}
+      onChange={onChange}
+      required
+      placeholder={placeholder}
+    />
+  </div>
+));
+
 const Register = () => {
   const [formData, setFormData] = useState({
-    name: '',
+    fullName: '',
     email: '',
     password: '',
     confirmPassword: ''
@@ -15,25 +49,37 @@ const Register = () => {
   const navigate = useNavigate();
   const { register } = useAuth();
 
-  const handleChange = (e) => {
+  const handleChange = useCallback((e) => {
     const { name, value } = e.target;
     setFormData(prev => ({
       ...prev,
       [name]: value
     }));
-  };
+  }, []);
 
-  const handleSubmit = async (e) => {
+  const validateForm = useCallback(() => {
+    if (formData.password !== formData.confirmPassword) {
+      setError('Hasła nie są identyczne');
+      return false;
+    }
+    if (formData.password.length < 6) {
+      setError('Hasło musi mieć co najmniej 6 znaków');
+      return false;
+    }
+    return true;
+  }, [formData.password, formData.confirmPassword]);
+
+  const handleSubmit = useCallback(async (e) => {
     e.preventDefault();
     setError('');
 
-    if (formData.password !== formData.confirmPassword) {
-      return setError('Hasła nie są identyczne');
+    if (!validateForm()) {
+      return;
     }
 
     try {
       setLoading(true);
-      const result = await register(formData.name, formData.email, formData.password);
+      const result = await register(formData.fullName, formData.email, formData.password);
       if (result.success) {
         navigate('/home');
       } else {
@@ -44,72 +90,55 @@ const Register = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [formData, register, navigate, validateForm]);
 
   return (
     <div className="auth-container">
       <div className="auth-card">
-        <div className="auth-header">
-          <h2>Zarejestruj się</h2>
-          <div className="logo">🌐 CyberQuiz</div>
-        </div>
-
-        {error && <div className="error-message">{error}</div>}
+        <AuthHeader title="Zarejestruj się" />
+        <ErrorMessage message={error} />
 
         <form onSubmit={handleSubmit} className="auth-form">
-          <div className="form-group">
-            <label htmlFor="name">Imię i nazwisko</label>
-            <input
-              type="text"
-              id="name"
-              name="name"
-              value={formData.name}
-              onChange={handleChange}
-              required
-              placeholder="Wprowadź imię i nazwisko"
-            />
-          </div>
+          <FormField
+            id="fullName"
+            label="Imię i nazwisko"
+            value={formData.fullName}
+            onChange={handleChange}
+            placeholder="Wprowadź imię i nazwisko"
+          />
 
-          <div className="form-group">
-            <label htmlFor="email">Email</label>
-            <input
-              type="email"
-              id="email"
-              name="email"
-              value={formData.email}
-              onChange={handleChange}
-              required
-              placeholder="Wprowadź email"
-            />
-          </div>
+          <FormField
+            id="email"
+            type="email"
+            label="Email"
+            value={formData.email}
+            onChange={handleChange}
+            placeholder="Wprowadź email"
+          />
 
-          <div className="form-group">
-            <label htmlFor="password">Hasło</label>
-            <input
-              type="password"
-              id="password"
-              name="password"
-              value={formData.password}
-              onChange={handleChange}
-              required
-              placeholder="Wprowadź hasło"
-            />
-          </div>
+          <FormField
+            id="password"
+            type="password"
+            label="Hasło"
+            value={formData.password}
+            onChange={handleChange}
+            placeholder="Wprowadź hasło"
+          />
 
-          <div className="form-group">
-            <label htmlFor="confirmPassword">Potwierdź hasło</label>
-            <input
-              type="password"
-              id="confirmPassword"
-              name="confirmPassword"
-              value={formData.confirmPassword}
-              onChange={handleChange}
-              required
-              placeholder="Potwierdź hasło"
-            />
-          </div>
+          <FormField
+            id="confirmPassword"
+            type="password"
+            label="Potwierdź hasło"
+            value={formData.confirmPassword}
+            onChange={handleChange}
+            placeholder="Potwierdź hasło"
+          />
 
-          <button type="submit" className="auth-button" disabled={loading}>
+          <button 
+            type="submit" 
+            className="auth-button" 
+            disabled={loading}
+          >
             {loading ? 'Rejestracja...' : 'Zarejestruj się'}
           </button>
         </form>

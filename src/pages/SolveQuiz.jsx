@@ -1,10 +1,11 @@
-import { useState, useEffect, useContext } from 'react';
+import React, { useState, useEffect, useContext, useCallback, useMemo, memo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { QuizContext } from '../context/QuizContext';
 import '../styles/SolveQuiz.css';
 import { useAuth } from '../context/AuthContext';
 
-const ScoreTable = ({ currentScore, playerName }) => {
+// Zoptymalizowany komponent tabeli wyników
+const ScoreTable = memo(({ currentScore, playerName }) => {
   return (
     <div className="score-table">
       <h3>Twój wynik</h3>
@@ -16,94 +17,71 @@ const ScoreTable = ({ currentScore, playerName }) => {
       </div>
     </div>
   );
-};
+});
+
+// Zoptymalizowany komponent odpowiedzi
+const AnswerButton = memo(({ 
+  answer, 
+  index, 
+  letter,
+  selectedAnswer, 
+  correctAnswerIndex, 
+  timeExpired, 
+  onSelect, 
+  disabled 
+}) => {
+  let buttonClass = "answer-button";
+  
+  if (selectedAnswer && selectedAnswer.answer === answer) {
+    buttonClass += " selected";
+  }
+  
+  if (timeExpired) {
+    if (index === correctAnswerIndex) {
+      buttonClass += " correct";
+    } else if (selectedAnswer && selectedAnswer.index === index) {
+      buttonClass += " incorrect";
+    }
+  }
+  
+  return (
+    <button
+      onClick={() => onSelect(answer, index)}
+      className={buttonClass}
+      data-letter={letter}
+      disabled={disabled}
+    >
+      {answer}
+    </button>
+  );
+});
 
 const SolveQuiz = () => {
-  const { user, logout } = useAuth();
+  const { user } = useAuth();
   const { id } = useParams();
   const navigate = useNavigate();
   const { getQuizById } = useContext(QuizContext);
+  
+  // Stan komponentu
   const [quiz, setQuiz] = useState(null);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [selectedAnswer, setSelectedAnswer] = useState(null);
   const [timeLeft, setTimeLeft] = useState(null);
   const [showResult, setShowResult] = useState(false);
   const [score, setScore] = useState(0);
+  const [correctAnswers, setCorrectAnswers] = useState(0); // Nowy stan dla liczby poprawnych odpowiedzi
   const [showScores, setShowScores] = useState(false);
   const [error, setError] = useState(null);
 
-  useEffect(() => {
-    const loadQuiz = async () => {
-      try {
-        const quizData = await getQuizById(id);
-        console.log('Loaded quiz data:', quizData);
-        setQuiz({
-          ...quizData,
-          timePerQuestion: quizData.timeLimit || 30
-        });
-        setTimeLeft(quizData.timeLimit || 30);
-        setError(null);
-      } catch (err) {
-        console.error('Error loading quiz:', err);
-        setError(err.message);
-        setQuiz(null);
-      }
-    };
-    loadQuiz();
-  }, [id, getQuizById]);
+  // Powrót do strony głównej
+  const handleBackToHome = useCallback(() => {
+    navigate('/home');
+  }, [navigate]);
 
-  // Efekt do monitorowania zmian w quizie
-  useEffect(() => {
-    if (quiz) {
-      console.log('Quiz updated:', {
-        quiz,
-        currentQuestionIndex,
-        totalQuestions: quiz.questions.length,
-        currentQuestion: quiz.questions[currentQuestionIndex]
-      });
-    }
-  }, [quiz, currentQuestionIndex]);
-
-  useEffect(() => {
-    if (!quiz || showResult) return;
-
-    const timer = setInterval(() => {
-      setTimeLeft((prevTime) => {
-        if (prevTime <= 1) {
-          setShowScores(true);
-          setTimeout(() => {
-            handleNextQuestion();
-          }, 2000);
-          return quiz.timePerQuestion;
-        }
-        return prevTime - 1;
-      });
-    }, 1000);
-
-    return () => clearInterval(timer);
-  }, [quiz, currentQuestionIndex, showResult]);
-
-  const handleAnswerSelect = (answer, index) => {
-    if (!selectedAnswer) {  // Sprawdzamy tylko przy pierwszym wyborze
-      const currentQuestion = quiz.questions[currentQuestionIndex];
-      if (index === currentQuestion.correctAnswer) {
-        setScore(prevScore => prevScore + 1);
-      }
-      setSelectedAnswer({ answer, index });
-      setShowScores(true);
-      setTimeout(() => {
-        handleNextQuestion();
-      }, 2000);
-    }
-  };
-
-  useEffect(() => {
-    console.log('Current Question Index:', currentQuestionIndex);
-    console.log('Selected Answer:', selectedAnswer);
-    console.log('Time Left:', timeLeft);
-  }, [currentQuestionIndex, selectedAnswer, timeLeft]);
-
-  const handleNextQuestion = () => {
+  // Przejście do następnego pytania
+  const handleNextQuestion = useCallback(() => {
+    if (!quiz) return;
+    
     const isLastQuestion = currentQuestionIndex >= quiz.questions.length - 1;
     
     if (isLastQuestion) {
@@ -113,103 +91,202 @@ const SolveQuiz = () => {
       const nextIndex = currentQuestionIndex + 1;
       setCurrentQuestionIndex(nextIndex);
       setSelectedAnswer(null);
-      setTimeLeft(quiz.timePerQuestion);
+      // Resetujemy czas dla nowego pytania
+      setTimeLeft(quiz.timeLimit || 30);
       setShowScores(false);
     }
-  };
+  }, [quiz, currentQuestionIndex]);
 
-  // Dodajemy efekt do debugowania
+  // Obsługa wyboru odpowiedzi
+  const handleAnswerSelect = useCallback((answer, index) => {
+    if (!selectedAnswer && quiz) {  
+      const currentQuestion = quiz.questions[currentQuestionIndex];
+      setSelectedAnswer({ answer, index });
+      
+      if (index === currentQuestion.correctAnswer) {
+        // Zwiększamy licznik poprawnych odpowiedzi
+        setCorrectAnswers(prev => prev + 1);
+        // Punktacja zależy od czasu odpowiedzi
+        const maxTimeForQuestion = quiz.timeLimit || 30;
+        const timeBonus = Math.floor((timeLeft / maxTimeForQuestion) * 100);
+        const questionPoints = 100 + timeBonus;
+        setScore(prevScore => prevScore + questionPoints);
+      }
+      
+      // Dodajemy opóźnienie przed pokazaniem wyników
+      setTimeout(() => {
+        setShowScores(true);
+      }, 2000); // 2 sekundy na zobaczenie poprawnej/niepoprawnej odpowiedzi
+
+      // Przejście do następnego pytania po dodatkowych 3 sekundach (łącznie 5 sekund)
+      setTimeout(() => {
+        handleNextQuestion();
+      }, 5000);
+    }
+  }, [quiz, currentQuestionIndex, selectedAnswer, timeLeft, handleNextQuestion]);
+
+  // Załaduj dane quizu
+  const loadQuiz = useCallback(async () => {
+    let timeoutId;
+    
+    try {
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
+
+      await new Promise(resolve => {
+        timeoutId = setTimeout(resolve, 300);
+      });
+
+      const quizData = await getQuizById(id);
+      if (!quizData) return;
+
+      setQuiz({
+        ...quizData,
+        timePerQuestion: quizData.timeLimit || 30
+      });
+      setTimeLeft(quizData.timeLimit || 30);
+      setError(null);
+    } catch (err) {
+      setError(err.message);
+      setQuiz(null);
+    }
+
+    // Zawsze zwracamy funkcję czyszczącą
+    return () => {
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
+    };
+  }, [id, getQuizById]);
+
   useEffect(() => {
-    console.log('Quiz state:', {
-      currentQuestionIndex,
-      questionsLength: quiz?.questions?.length,
-      currentQuestion: quiz?.questions?.[currentQuestionIndex],
-      timeLeft,
-      showScores,
-      showResult
-    });
-  }, [quiz, currentQuestionIndex, timeLeft, showScores, showResult]);
+    let cleanup;
+    const init = async () => {
+      setScore(0);
+      setCorrectAnswers(0);
+      cleanup = await loadQuiz();
+    };
+    
+    init();
+    
+    return () => {
+      if (typeof cleanup === 'function') {
+        cleanup();
+      }
+    };
+  }, [loadQuiz]);
 
+  // Efekt dla timera
+  useEffect(() => {
+    if (!quiz || showResult || selectedAnswer) return;
+
+    const timer = setInterval(() => {
+      setTimeLeft(prevTime => {
+        if (prevTime <= 1) {
+          setSelectedAnswer({ answer: '', index: -1 });
+          // Dodajemy opóźnienie przed pokazaniem wyników gdy skończy się czas
+          setTimeout(() => {
+            setShowScores(true);
+          }, 2000);
+          
+          setTimeout(() => {
+            handleNextQuestion();
+          }, 5000);
+          
+          return quiz.timeLimit || 30;
+        }
+        return prevTime - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [quiz, showResult, selectedAnswer, handleNextQuestion]);
+
+  // Memoizacja bieżącego pytania
+  const currentQuestion = useMemo(() => 
+    quiz?.questions?.[currentQuestionIndex] || null,
+    [quiz, currentQuestionIndex]
+  );
+
+  // Memoizacja procentu ukończenia quizu
+  const progressPercentage = useMemo(() => 
+    quiz?.questions ? ((currentQuestionIndex + 1) / quiz.questions.length) * 100 : 0,
+    [quiz, currentQuestionIndex]
+  );
+
+  // Memoizacja procentu poprawnych odpowiedzi - teraz bazuje na rzeczywistej liczbie poprawnych odpowiedzi
+  const resultPercentage = useMemo(() => {
+    if (!quiz?.questions?.length) return 0;
+    return Math.round((correctAnswers / quiz.questions.length) * 100);
+  }, [quiz, correctAnswers]);
+
+  // Wyświetl komunikat błędu
   if (error) {
     return (
       <div className="solve-quiz-container">
         <div className="quiz-error">
           <h2>Error</h2>
           <p>{error}</p>
-          <button onClick={() => navigate('/home')}>Back to Home</button>
+          <button onClick={handleBackToHome}>Back to Home</button>
         </div>
       </div>
     );
   }
 
+  // Wyświetl ładowanie
   if (!quiz) return <div className="solve-quiz-container">Loading...</div>;
 
+  // Wyświetl wyniki
   if (showResult) {
-    const percentage = Math.round((score / quiz.questions.length) * 100);
     return (
       <div className="solve-quiz-container">
         <div className="quiz-result">
           <h2>Quiz ukończony!</h2>
           <div className="score-circle">
-            <div className="score-number">{percentage}%</div>
+            <div className="score-number">{resultPercentage}%</div>
             <div className="score-text">poprawnych odpowiedzi</div>
           </div>
-          <p>Zdobyłeś {score} z {quiz.questions.length} punktów</p>
-          <button onClick={() => navigate('/home')}>Wróć do strony głównej</button>
+          <p>Zdobyłeś {score} punktów (maksymalnie możliwe: {quiz.questions.length * 200})</p>
+          <button onClick={handleBackToHome}>Wróć do strony głównej</button>
         </div>
       </div>
     );
   }
 
-  const currentQuestion = quiz.questions[currentQuestionIndex];
-
-  if (!quiz || !quiz.questions || !quiz.questions[currentQuestionIndex]) {
-    console.log('Loading state:', {
-      quiz: !!quiz,
-      questions: !!quiz?.questions,
-      currentQuestion: !!quiz?.questions?.[currentQuestionIndex],
-      currentQuestionIndex
-    });
+  // Sprawdź czy pytanie jest dostępne
+  if (!currentQuestion) {
     return <div className="solve-quiz-container">Loading question...</div>;
   }
 
   const letters = ['A', 'B', 'C', 'D'];
-  const progressPercentage = ((currentQuestionIndex + 1) / quiz.questions.length) * 100;
 
   return (
     <div className="solve-quiz-container">
       <div className="quiz-header">
         <div className="points">
           <img src="/points-icon.svg" alt="Points" className="points-icon" />
-          200
+          {score} {/* Pokazuje aktualny wynik zamiast stałej wartości 200 */}
         </div>
         <h1 className="quiz-title">{quiz.title}</h1>
-        <button className="close-button" onClick={() => navigate('/home')}>×</button>
+        <button className="close-button" onClick={handleBackToHome}>×</button>
       </div>
       
       <div className="question-container">
         <h2 className="question-text">{currentQuestion.question}</h2>
         <div className="answers-container">
           {currentQuestion.options.map((answer, index) => (
-            <button
+            <AnswerButton
               key={index}
-              onClick={() => handleAnswerSelect(answer, index)}
-              className={`answer-button ${
-                selectedAnswer && selectedAnswer.answer === answer
-                  ? 'selected'
-                  : ''
-              } ${
-                timeLeft <= 1 && index === currentQuestion.correctAnswer
-                  ? 'correct'
-                  : timeLeft <= 1 && selectedAnswer && selectedAnswer.index === index
-                  ? 'incorrect'
-                  : ''
-              }`}
-              data-letter={letters[index]}
+              answer={answer}
+              index={index}
+              letter={letters[index]}
+              selectedAnswer={selectedAnswer}
+              correctAnswerIndex={currentQuestion.correctAnswer}
+              timeExpired={timeLeft <= 1}
+              onSelect={handleAnswerSelect}
               disabled={timeLeft <= 1}
-            >
-              {answer}
-            </button>
+            />
           ))}
         </div>
         {selectedAnswer && currentQuestion.explanation && (

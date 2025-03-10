@@ -1,7 +1,43 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback, memo } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import '../styles/Auth.css';
+
+// Komponent nagłówka formularza
+const AuthHeader = memo(({ title }) => (
+  <div className="auth-header">
+    <h2>{title}</h2>
+    <div className="logo">CyberQuiz</div>
+  </div>
+));
+
+// Komponent komunikatu o błędzie
+const ErrorMessage = memo(({ message }) => 
+  message ? <div className="error-message">{message}</div> : null
+);
+
+// Komponent pola formularza
+const FormField = memo(({ 
+  id, 
+  type = 'text', 
+  label, 
+  value, 
+  onChange, 
+  placeholder 
+}) => (
+  <div className="form-group">
+    <label htmlFor={id}>{label}</label>
+    <input
+      type={type}
+      id={id}
+      name={id}
+      value={value}
+      onChange={onChange}
+      required
+      placeholder={placeholder}
+    />
+  </div>
+));
 
 const Login = () => {
   const [formData, setFormData] = useState({
@@ -13,15 +49,15 @@ const Login = () => {
   const navigate = useNavigate();
   const { login } = useAuth();
 
-  const handleChange = (e) => {
+  const handleChange = useCallback((e) => {
     const { name, value } = e.target;
     setFormData(prev => ({
       ...prev,
       [name]: value
     }));
-  };
+  }, []);
 
-  const handleSubmit = async (e) => {
+  const handleSubmit = useCallback(async (e) => {
     e.preventDefault();
     setError('');
 
@@ -38,44 +74,32 @@ const Login = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [formData.email, formData.password, login, navigate]);
 
   return (
     <div className="auth-container">
       <div className="auth-card">
-        <div className="auth-header">
-          <h2>Zaloguj się</h2>
-          <div className="logo">🌐 CyberQuiz</div>
-        </div>
-
-        {error && <div className="error-message">{error}</div>}
+        <AuthHeader title="Zaloguj się" />
+        <ErrorMessage message={error} />
 
         <form onSubmit={handleSubmit} className="auth-form">
-          <div className="form-group">
-            <label htmlFor="email">Email</label>
-            <input
-              type="email"
-              id="email"
-              name="email"
-              value={formData.email}
-              onChange={handleChange}
-              required
-              placeholder="Wprowadź email"
-            />
-          </div>
+          <FormField
+            id="email"
+            type="email"
+            label="Email"
+            value={formData.email}
+            onChange={handleChange}
+            placeholder="Wprowadź email"
+          />
 
-          <div className="form-group">
-            <label htmlFor="password">Hasło</label>
-            <input
-              type="password"
-              id="password"
-              name="password"
-              value={formData.password}
-              onChange={handleChange}
-              required
-              placeholder="Wprowadź hasło"
-            />
-          </div>
+          <FormField
+            id="password"
+            type="password"
+            label="Hasło"
+            value={formData.password}
+            onChange={handleChange}
+            placeholder="Wprowadź hasło"
+          />
 
           <button type="submit" className="auth-button" disabled={loading}>
             {loading ? 'Logowanie...' : 'Zaloguj się'}

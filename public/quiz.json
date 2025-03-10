@@ -71,6 +71,102 @@
           "explanation": "Tag <h1> jest używany do tworzenia nagłówka pierwszego poziomu w HTML."
         }
       ]
+    },
+    {
+      "id": 3,
+      "title": "Absurdalne Sytuacje Życiowe",
+      "description": "Quiz o najbardziej nieprawdopodobnych i zabawnych sytuacjach, które mogą się zdarzyć (albo i nie)!",
+      "category": "other",
+      "difficulty": "easy",
+      "timeLimit": 30,
+      "createdAt": "2024-01-05T12:00:00.000Z",
+      "lastModified": "2024-01-05T12:00:00.000Z",
+      "questions": [
+        {
+          "id": 1,
+          "question": "Jesteś w windzie z żyrafą. Nagle winda się zatrzymuje. Co robisz?",
+          "options": [
+            "Próbujesz użyć długiej szyi żyrafy jako anteny do złapania zasięgu",
+            "Pytasz żyrafę, czy też nie lubi zamkniętych przestrzeni",
+            "Proponujesz żyrafie partię w szachy",
+            "Wykorzystujesz sytuację, żeby wreszcie dowiedzieć się, jak żyrafy śpią na stojąco"
+          ],
+          "correctAnswer": 0,
+          "explanation": "Długa szyja żyrafy mogłaby faktycznie służyć jako niezła antena - przynajmniej teoretycznie!"
+        },
+        {
+          "id": 2,
+          "question": "Twój kot nagle zaczął mówić, ale tylko po hiszpańsku. Co jest Twoim pierwszym krokiem?",
+          "options": [
+            "Szukasz w internecie: 'Czy Duolingo ma kurs hiszpańskiego dla właścicieli kotów?'",
+            "Pytasz kota o jego opinię na temat stereotypu sjesty",
+            "Sprawdzasz czy przypadkiem nie zjadłeś wczoraj przeterminowanych grzybków halucynogennych",
+            "Nagrywasz kota na TikToku - czas zostać sławnym!"
+          ],
+          "correctAnswer": 2,
+          "explanation": "Zawsze najpierw wykluczaj najprostsze wyjaśnienia - jak przeterminowane grzybki!"
+        },
+        {
+          "id": 3,
+          "question": "Budzisz się rano i odkrywasz, że grawitacja działa do góry. Co robisz najpierw?",
+          "options": [
+            "Przyklejasz wszystkie meble do podłogi taśmą klejącą",
+            "Sprawdzasz czy Australia nie stała się przypadkiem nowym biegunem północnym",
+            "Cieszysz się, że wreszcie możesz dotknąć sufitu bez drabiny",
+            "Dzwonisz do NASA z pytaniem czy nie przegapiłeś jakiegoś ważnego maila o zmianie praw fizyki"
+          ],
+          "correctAnswer": 3,
+          "explanation": "NASA powinna wiedzieć o takich rzeczach - w końcu od czego mają ten wielki budżet?"
+        },
+        {
+          "id": 4,
+          "question": "Wszystkie piekarnie na świecie jednogłośnie decydują się piec tylko i wyłącznie bajgle. Jak reagujesz?",
+          "options": [
+            "Zakładasz podziemny ruch oporu produkujący nielegalny chleb tostowy",
+            "Piszesz książkę '1001 sposobów na zjedzenie bajgla'",
+            "Rozpoczynasz badania nad sklonowaniem ostatniego rogalika",
+            "Akceptujesz nową bajglową rzeczywistość i uczysz się robić kanapki w kształcie donutów"
+          ],
+          "correctAnswer": 0,
+          "explanation": "Viva la revolución! Chleb tostowy musi przetrwać!"
+        },
+        {
+          "id": 5,
+          "question": "Odkrywasz, że Twój odkurzacz prowadzi tajne życie jako DJ na podziemnych imprezach robotów. Co robisz?",
+          "options": [
+            "Prosisz go o zniżkę na bilety dla innych sprzętów AGD",
+            "Pytasz czy może nauczyć Twoją pralkę beatboxu",
+            "Sugerujesz współpracę z mopem jako tancerzem",
+            "Zaczynasz organizować turnieje DJ-skie między odkurzaczami z całego osiedla"
+          ],
+          "correctAnswer": 3,
+          "explanation": "Odkurzaczowy talent show to przyszłość rozrywki domowej!"
+        },
+        {
+          "id": 6,
+          "question": "Twoje skarpetki zaczynają się spontanicznie parować z innymi losowymi przedmiotami w domu. Co robisz?",
+          "options": [
+            "Zakładasz agencję matrymonialną dla samotnych skarpetek",
+            "Zgłaszasz się do programu 'Skarpetki w Potrzebie'",
+            "Patentujesz nowy trend w modzie: skarpeto-rękawiczki",
+            "Organizujesz terapię grupową dla skarpetek z problemami z przywiązaniem"
+          ],
+          "correctAnswer": 2,
+          "explanation": "Skarpeto-rękawiczki to przyszłość mody! Praktyczne i stylowe!"
+        },
+        {
+          "id": 7,
+          "question": "Przypadkowo wynajdujesz maszynę do czytania w myślach roślin doniczkowych. O czym najczęściej myśli Twój kaktus?",
+          "options": [
+            "O tym, że wszyscy się od niego odsuwają przez te kolce",
+            "Planuje wakacje na pustyni",
+            "Zastanawia się, czy nie przejść na weganizm",
+            "Marzy o karierze jako naturalna pinezka"
+          ],
+          "correctAnswer": 0,
+          "explanation": "Kaktusy też mają uczucia! Tylko trochę... kłujące."
+        }
+      ]
     }
   ]
 }
