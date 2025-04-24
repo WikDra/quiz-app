@@ -85,10 +85,10 @@ export const AuthProvider = ({ children }) => {
     }
   }, [users]);
 
-  // Rejestracja użytkownika
-  const register = useCallback(async (name, email, password) => {
+  // Rejestracja użytkownika - zaktualizowana funkcja
+  const register = useCallback(async (fullName, email, password) => {
     try {
-      if (!name?.trim() || !email?.trim() || !password?.trim()) {
+      if (!fullName?.trim() || !email?.trim() || !password?.trim()) {
         return { success: false, error: 'Wszystkie pola są wymagane' };
       }
       
@@ -96,17 +96,16 @@ export const AuthProvider = ({ children }) => {
         return { success: false, error: 'Użytkownik o tym adresie email już istnieje' };
       }
 
-      // Poprawne ID - zapewnienie unikalności
       const newId = users.length > 0 
         ? Math.max(...users.map(u => parseInt(u.id))) + 1 
         : 1;
       
       const newUser = {
         id: String(newId),
-        name,
+        fullName,  // Zmieniono z name na fullName
         email,
         password,
-        level: USER_LEVELS[0], // Początkujący z constants
+        level: USER_LEVELS[0],
         stats: {
           quizzes: 0,
           bestTime: '0min',

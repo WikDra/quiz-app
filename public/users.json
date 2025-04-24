@@ -2,7 +2,7 @@
   "users": [
     {
       "id": "1",
-      "name": "admin",
+      "fullName": "Administrator",
       "email": "admin@admin.pl",
       "password": "1234",
       "level": "Początkujący",
