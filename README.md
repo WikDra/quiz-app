@@ -1,8 +1,62 @@
-# React + Vite
+# Quiz App
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Aplikacja do tworzenia i rozwiązywania quizów zbudowana na bazie React.js (frontend) i Flask (backend).
 
-Currently, two official plugins are available:
+## Struktura projektu
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react/README.md) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+```
+quiz-app/
+├── src/                  # Kod źródłowy frontendu (React.js)
+├── public/               # Pliki statyczne i dane JSON
+├── backend/              # Kod źródłowy backendu (Flask)
+│   ├── models/           # Modele danych (SQLAlchemy)
+│   ├── controllers/      # Logika biznesowa
+│   ├── utils/            # Funkcje pomocnicze
+├── backup/               # Kopia zapasowa starego kodu
+```
+
+## Technologie
+
+- Frontend: React.js, Vite, CSS
+- Backend: Flask, SQLAlchemy, SQLite
+- Narzędzia: ESLint, Flask-Migrate, Flask-CORS
+
+## Uruchamianie aplikacji
+
+### Instalacja zależności:
+
+```bash
+# Zależności frontendu
+npm install
+
+# Zależności backendu
+cd backend
+pip install -r requirements.txt
+```
+
+### Uruchamianie aplikacji w trybie deweloperskim:
+
+```bash
+# Uruchamia zarówno frontend jak i backend
+npm run dev
+
+# Uruchomienie tylko backendu
+npm run server
+
+# Uruchomienie tylko frontendu
+npm run frontend
+```
+
+### Budowanie aplikacji produkcyjnej:
+
+```bash
+npm run build
+```
+
+## Funkcje aplikacji
+
+- Rejestracja i logowanie użytkowników
+- Przeglądanie dostępnych quizów
+- Tworzenie własnych quizów
+- Rozwiązywanie quizów z pomiarem czasu
+- Zapisywanie wyników i statystyk użytkowników

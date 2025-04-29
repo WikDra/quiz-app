@@ -32,12 +32,17 @@ const AnswerButton = memo(({
 }) => {
   let buttonClass = "answer-button";
   
+  // Zawsze konwertujemy correctAnswerIndex na liczbę
+  const correctIndex = typeof correctAnswerIndex === 'string' 
+    ? parseInt(correctAnswerIndex, 10) 
+    : correctAnswerIndex;
+  
   if (selectedAnswer && selectedAnswer.answer === answer) {
     buttonClass += " selected";
   }
   
   if (timeExpired) {
-    if (index === correctAnswerIndex) {
+    if (index === correctIndex) {
       buttonClass += " correct";
     } else if (selectedAnswer && selectedAnswer.index === index) {
       buttonClass += " incorrect";
@@ -69,9 +74,10 @@ const SolveQuiz = () => {
   const [timeLeft, setTimeLeft] = useState(null);
   const [showResult, setShowResult] = useState(false);
   const [score, setScore] = useState(0);
-  const [correctAnswers, setCorrectAnswers] = useState(0); // Nowy stan dla liczby poprawnych odpowiedzi
+  const [correctAnswers, setCorrectAnswers] = useState(0);
   const [showScores, setShowScores] = useState(false);
   const [error, setError] = useState(null);
+  const [timerActive, setTimerActive] = useState(true); // Nowy stan do kontrolowania timera
 
   // Powrót do strony głównej
   const handleBackToHome = useCallback(() => {
@@ -87,6 +93,7 @@ const SolveQuiz = () => {
     if (isLastQuestion) {
       setShowScores(false);
       setShowResult(true);
+      setTimerActive(false); // Zatrzymaj timer na ostatniej stronie
     } else {
       const nextIndex = currentQuestionIndex + 1;
       setCurrentQuestionIndex(nextIndex);
@@ -94,16 +101,25 @@ const SolveQuiz = () => {
       // Resetujemy czas dla nowego pytania
       setTimeLeft(quiz.timeLimit || 30);
       setShowScores(false);
+      setTimerActive(true); // Aktywuj timer dla nowego pytania
     }
   }, [quiz, currentQuestionIndex]);
-
+  
   // Obsługa wyboru odpowiedzi
   const handleAnswerSelect = useCallback((answer, index) => {
     if (!selectedAnswer && quiz) {  
       const currentQuestion = quiz.questions[currentQuestionIndex];
       setSelectedAnswer({ answer, index });
+      setTimerActive(false); // Zatrzymaj timer po wyborze odpowiedzi
       
-      if (index === currentQuestion.correctAnswer) {
+      // Zapewniamy, że correctAnswer jest liczbą
+      const correctAnswerIndex = typeof currentQuestion.correctAnswer === 'string'
+        ? parseInt(currentQuestion.correctAnswer, 10)
+        : currentQuestion.correctAnswer;
+      
+      console.log("Correct answer index:", correctAnswerIndex, "Selected index:", index, "Type of correctAnswer:", typeof currentQuestion.correctAnswer);
+      
+      if (index === correctAnswerIndex) {
         // Zwiększamy licznik poprawnych odpowiedzi
         setCorrectAnswers(prev => prev + 1);
         // Punktacja zależy od czasu odpowiedzi
@@ -141,11 +157,22 @@ const SolveQuiz = () => {
       const quizData = await getQuizById(id);
       if (!quizData) return;
 
+      // Upewnij się, że correctAnswer jest zawsze liczbą
+      if (quizData.questions && Array.isArray(quizData.questions)) {
+        quizData.questions = quizData.questions.map(question => ({
+          ...question,
+          correctAnswer: typeof question.correctAnswer === 'string'
+            ? parseInt(question.correctAnswer, 10)
+            : question.correctAnswer
+        }));
+      }
+
       setQuiz({
         ...quizData,
         timePerQuestion: quizData.timeLimit || 30
       });
       setTimeLeft(quizData.timeLimit || 30);
+      setTimerActive(true); // Aktywuj timer po załadowaniu quizu
       setError(null);
     } catch (err) {
       setError(err.message);
@@ -176,15 +203,18 @@ const SolveQuiz = () => {
       }
     };
   }, [loadQuiz]);
-
+  
   // Efekt dla timera
   useEffect(() => {
-    if (!quiz || showResult || selectedAnswer) return;
+    if (!quiz || showResult || selectedAnswer || !timerActive) return;
 
     const timer = setInterval(() => {
       setTimeLeft(prevTime => {
         if (prevTime <= 1) {
+          console.log("Czas minął dla pytania:", currentQuestionIndex);
           setSelectedAnswer({ answer: '', index: -1 });
+          setTimerActive(false); // Zatrzymaj timer gdy czas się skończył
+          
           // Dodajemy opóźnienie przed pokazaniem wyników gdy skończy się czas
           setTimeout(() => {
             setShowScores(true);
@@ -194,14 +224,14 @@ const SolveQuiz = () => {
             handleNextQuestion();
           }, 5000);
           
-          return quiz.timeLimit || 30;
+          return 0; // Zatrzymaj na 0, aby uniknąć problemów z ponownym uruchomieniem timera
         }
         return prevTime - 1;
       });
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [quiz, showResult, selectedAnswer, handleNextQuestion]);
+  }, [quiz, showResult, selectedAnswer, handleNextQuestion, currentQuestionIndex, timerActive]);
 
   // Memoizacja bieżącego pytania
   const currentQuestion = useMemo(() => 
@@ -260,22 +290,24 @@ const SolveQuiz = () => {
   }
 
   const letters = ['A', 'B', 'C', 'D'];
-
+  // Dodatkowe sprawdzenia bezpieczeństwa
+  const hasValidOptions = currentQuestion && currentQuestion.options && Array.isArray(currentQuestion.options);
+  
   return (
     <div className="solve-quiz-container">
       <div className="quiz-header">
         <div className="points">
           <img src="/points-icon.svg" alt="Points" className="points-icon" />
-          {score} {/* Pokazuje aktualny wynik zamiast stałej wartości 200 */}
+          {score}
         </div>
         <h1 className="quiz-title">{quiz.title}</h1>
         <button className="close-button" onClick={handleBackToHome}>×</button>
       </div>
       
       <div className="question-container">
-        <h2 className="question-text">{currentQuestion.question}</h2>
+        <h2 className="question-text">{currentQuestion ? currentQuestion.question : "Ładowanie pytania..."}</h2>
         <div className="answers-container">
-          {currentQuestion.options.map((answer, index) => (
+          {hasValidOptions && currentQuestion.options.map((answer, index) => (
             <AnswerButton
               key={index}
               answer={answer}
@@ -283,13 +315,14 @@ const SolveQuiz = () => {
               letter={letters[index]}
               selectedAnswer={selectedAnswer}
               correctAnswerIndex={currentQuestion.correctAnswer}
-              timeExpired={timeLeft <= 1}
+              timeExpired={timeLeft <= 0}
               onSelect={handleAnswerSelect}
-              disabled={timeLeft <= 1}
+              disabled={!!selectedAnswer || timeLeft <= 0}
             />
           ))}
+
         </div>
-        {selectedAnswer && currentQuestion.explanation && (
+        {selectedAnswer && currentQuestion && currentQuestion.explanation && (
           <div className="explanation">
             <p>{currentQuestion.explanation}</p>
           </div>

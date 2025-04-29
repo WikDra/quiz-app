@@ -3,11 +3,11 @@
  */
 
 // API URLs
-export const API_BASE_URL = 'http://localhost:3001';
+export const API_BASE_URL = 'http://localhost:5000';
 export const API_ENDPOINTS = {
-  QUIZ: `${API_BASE_URL}/quiz`,
-  USERS: `${API_BASE_URL}/users.json`,
-  QUIZ_BY_ID: (id) => `${API_BASE_URL}/quiz/${id}`
+  QUIZ: `${API_BASE_URL}/api/quiz`,
+  USERS: `${API_BASE_URL}/api/users`, // Zmieniamy na /api/users zamiast users.json
+  QUIZ_BY_ID: (id) => `${API_BASE_URL}/api/quiz/${id}`
 };
 
 // Kategorie quizów

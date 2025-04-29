@@ -60,79 +60,84 @@ export const AuthProvider = ({ children }) => {
     }
   }, []);
 
-  // Logowanie użytkownika
-  const login = useCallback(async (email, password) => {
-    try {
-      if (!email?.trim() || !password?.trim()) {
-        return { success: false, error: 'Email i hasło są wymagane' };
-      }
-      
-      const foundUser = users.find(u => u.email === email && u.password === password);
-      
-      if (!foundUser) {
-        return { success: false, error: 'Nieprawidłowy email lub hasło' };
-      }
-
-      // Nie przechowuj hasła w stanie aplikacji ani localStorage
-      const userWithoutPassword = { ...foundUser };
-      delete userWithoutPassword.password;
-      
-      setUser(userWithoutPassword);
-      localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(userWithoutPassword));
-      return { success: true };
-    } catch (error) {
-      return { success: false, error: error.message || 'Wystąpił błąd podczas logowania' };
-    }
-  }, [users]);
-
-  // Rejestracja użytkownika - zaktualizowana funkcja
+  // Rejestracja użytkownika - zaktualizowana funkcja, aby korzystała z nowego API
   const register = useCallback(async (fullName, email, password) => {
     try {
       if (!fullName?.trim() || !email?.trim() || !password?.trim()) {
         return { success: false, error: 'Wszystkie pola są wymagane' };
       }
       
-      if (users.some(u => u.email === email)) {
-        return { success: false, error: 'Użytkownik o tym adresie email już istnieje' };
-      }
-
-      const newId = users.length > 0 
-        ? Math.max(...users.map(u => parseInt(u.id))) + 1 
-        : 1;
-      
-      const newUser = {
-        id: String(newId),
-        fullName,  // Zmieniono z name na fullName
-        email,
-        password,
-        level: USER_LEVELS[0],
-        stats: {
-          quizzes: 0,
-          bestTime: '0min',
-          correctAnswers: 0
+      // Bezpośrednie wywołanie do API rejestracji
+      const response = await fetch(`${API_BASE_URL}/api/register`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
         },
-        avatar: `https://i.pravatar.cc/200?img=${Math.floor(Math.random() * 70)}`
-      };
+        body: JSON.stringify({ fullName, email, password }),
+      });
       
-      const updatedUsers = [...users, newUser];
-      const saved = await saveUsers(updatedUsers);
+      const data = await response.json();
       
-      if (!saved) {
-        return { success: false, error: 'Nie udało się zapisać nowego użytkownika' };
+      if (!response.ok) {
+        return { 
+          success: false, 
+          error: data.error || 'Wystąpił błąd podczas rejestracji' 
+        };
       }
       
-      setUsers(updatedUsers);
-
-      const userWithoutPassword = { ...newUser };
-      delete userWithoutPassword.password;
+      // Po udanej rejestracji odświeżamy listę użytkowników
+      await fetchUsers();
       
-      setUser(userWithoutPassword);
-      localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(userWithoutPassword));
+      // Ustawiamy zalogowanego użytkownika
+      setUser(data);
+      localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(data));
+      
       return { success: true };
     } catch (error) {
-      return { success: false, error: error.message || 'Wystąpił błąd podczas rejestracji' };
+      return { 
+        success: false, 
+        error: error.message || 'Wystąpił błąd podczas rejestracji' 
+      };
     }
-  }, [users, saveUsers]);
+  }, [fetchUsers]);
+  
+  // Zaktualizowana funkcja logowania
+  const login = useCallback(async (email, password) => {
+    try {
+      if (!email?.trim() || !password?.trim()) {
+        return { success: false, error: 'Email i hasło są wymagane' };
+      }
+      
+      // Bezpośrednie wywołanie do API logowania
+      const response = await fetch(`${API_BASE_URL}/api/login`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email, password }),
+      });
+      
+      const data = await response.json();
+      
+      if (!response.ok) {
+        return { 
+          success: false, 
+          error: data.error || 'Nieprawidłowy email lub hasło' 
+        };
+      }
+      
+      // Ustawiamy zalogowanego użytkownika
+      setUser(data);
+      localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(data));
+      
+      return { success: true };
+    } catch (error) {
+      return { 
+        success: false, 
+        error: error.message || 'Wystąpił błąd podczas logowania' 
+      };
+    }
+  }, []);
 
   // Wylogowanie użytkownika
   const logout = useCallback(() => {

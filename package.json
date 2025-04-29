@@ -2,13 +2,13 @@
   "name": "quiz-app",
   "private": true,
   "version": "0.0.0",
-  "type": "module",
-  "scripts": {
-    "dev": "concurrently \"node server.cjs\" \"vite\"",
+  "type": "module",  "scripts": {
+    "dev": "concurrently \"cd backend && python run.py\" \"vite\"",
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "server": "node server.cjs"
+    "server": "cd backend && python run.py",
+    "frontend": "vite"
   },
   "dependencies": {
     "@fortawesome/fontawesome-svg-core": "^6.5.1",
