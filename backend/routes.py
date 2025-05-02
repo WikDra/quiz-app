@@ -30,8 +30,7 @@ def register_routes(app):
         """Endpoint do sprawdzania stanu aplikacji"""
         return jsonify({'status': 'ok', 'message': 'Server is running'})
     
-    # Endpointy dla użytkowników
-    @app.route('/api/users')
+    # Endpointy dla użytkowników    @app.route('/api/users')
     def get_users():
         """Zwraca listę użytkowników"""
         users, error = UserController.get_all_users()
@@ -47,6 +46,18 @@ def register_routes(app):
             return jsonify({'error': 'No user data provided'}), 400
         
         result, error = UserController.update_users(data['users'])
+        if error:
+            return jsonify({'error': error}), 500
+        return jsonify(result)
+    
+    @app.route('/api/users/<int:user_id>/avatar', methods=['PUT'])
+    def update_user_avatar(user_id):
+        """Aktualizuje awatar użytkownika"""
+        data = request.get_json()
+        if not data or 'avatar_url' not in data:
+            return jsonify({'error': 'No avatar URL provided'}), 400
+        
+        result, error = UserController.update_user_avatar(user_id, data['avatar_url'])
         if error:
             return jsonify({'error': error}), 500
         return jsonify(result)

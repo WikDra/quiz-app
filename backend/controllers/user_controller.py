@@ -43,9 +43,11 @@ class UserController:
             new_user = User(
                 username=data['fullName'],
                 email=data['email'],
-                password_hash=data['password'],  # W produkcji hasło powinno być hashowane
                 is_admin=False
             )
+            
+            # Bezpieczne ustawienie hasła
+            new_user.set_password(data['password'])
             
             db.session.add(new_user)
             db.session.commit()
@@ -69,14 +71,30 @@ class UserController:
             user = User.query.filter_by(email=email).first()
             
             # Sprawdź czy użytkownik istnieje i czy hasło jest poprawne
-            if not user or user.password_hash != password:  # W produkcji porównanie zahashowanych haseł
+            if not user or not user.check_password(password):
                 return None, "Invalid email or password"
-            
-            # Zwróć dane użytkownika
+              # Zwróć dane użytkownika
             return user.to_dict(), None
         except Exception as e:
             current_app.logger.error(f"Login error: {str(e)}")
             return None, f"Login failed: {str(e)}"
+    
+    @staticmethod
+    def update_user_avatar(user_id, avatar_url):
+        """Aktualizuje awatar użytkownika"""
+        try:
+            user = User.query.get(user_id)
+            if not user:
+                return None, "User not found"
+            
+            user.avatar_url = avatar_url
+            db.session.commit()
+            
+            return user.to_dict(), None
+        except Exception as e:
+            db.session.rollback()
+            current_app.logger.error(f"Avatar update error: {str(e)}")
+            return None, f"Avatar update failed: {str(e)}"
     
     @staticmethod
     def update_users(users_data):
@@ -95,7 +113,7 @@ class UserController:
                         existing_user.username = user_data.get('fullName', existing_user.username)
                         existing_user.email = user_data.get('email', existing_user.email)
                         if 'password' in user_data:
-                            existing_user.password_hash = user_data['password']  # W produkcji hasło powinno być hashowane
+                            existing_user.set_password(user_data['password'])
                         existing_user.is_admin = user_data.get('isAdmin', existing_user.is_admin)
                         updated_count += 1
                         continue
@@ -108,7 +126,7 @@ class UserController:
                         # Aktualizuj istniejącego użytkownika
                         existing_user.username = user_data.get('fullName', existing_user.username)
                         if 'password' in user_data:
-                            existing_user.password_hash = user_data['password']  # W produkcji hasło powinno być hashowane
+                            existing_user.set_password(user_data['password'])
                         existing_user.is_admin = user_data.get('isAdmin', existing_user.is_admin)
                         updated_count += 1
                         continue
@@ -118,9 +136,13 @@ class UserController:
                     new_user = User(
                         username=user_data['fullName'],
                         email=user_data['email'],
-                        password_hash=user_data.get('password'),  # W produkcji hasło powinno być hashowane
                         is_admin=user_data.get('isAdmin', False)
                     )
+                    
+                    # Bezpieczne ustawienie hasła
+                    if 'password' in user_data:
+                        new_user.set_password(user_data['password'])
+                    
                     db.session.add(new_user)
                     new_count += 1
             

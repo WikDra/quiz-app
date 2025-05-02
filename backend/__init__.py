@@ -6,10 +6,12 @@ from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
 from flask_cors import CORS
+from flask_bcrypt import Bcrypt
 
 # Inicjalizacja obiektów rozszerzeń
 db = SQLAlchemy()
 migrate = Migrate()
+bcrypt = Bcrypt()
 
 def create_app():
     """Tworzy i konfiguruje instancję aplikacji Flask"""
@@ -20,11 +22,11 @@ def create_app():
     app.config['SECRET_KEY'] = 'dev_key_for_quiz_app'
     app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(os.path.dirname(__file__), 'quiz_app.db')
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-    
-    # Inicjalizacja rozszerzeń
+      # Inicjalizacja rozszerzeń
     db.init_app(app)
     migrate.init_app(app, db)
     CORS(app)
+    bcrypt.init_app(app)
 
     # Konfiguracja logowania
     import logging
