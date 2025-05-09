@@ -67,8 +67,8 @@ def update_users():
                     # Aktualizuj istniejącego użytkownika
                     existing_user.username = user_data.get('fullName', existing_user.username)
                     existing_user.email = user_data.get('email', existing_user.email)
-                    if 'password' in user_data:
-                        existing_user.password_hash = user_data['password']  # W produkcji hasło powinno być hashowane
+                    if 'password' in user_data and user_data['password']: # Check if password is provided and not empty
+                        existing_user.set_password(user_data['password']) # Use set_password
                     existing_user.is_admin = user_data.get('isAdmin', existing_user.is_admin)
                     updated_count += 1
                     continue
@@ -80,8 +80,8 @@ def update_users():
                 if existing_user:
                     # Aktualizuj istniejącego użytkownika
                     existing_user.username = user_data.get('fullName', existing_user.username)
-                    if 'password' in user_data:
-                        existing_user.password_hash = user_data['password']  # W produkcji hasło powinno być hashowane
+                    if 'password' in user_data and user_data['password']: # Check if password is provided and not empty
+                        existing_user.set_password(user_data['password']) # Use set_password
                     existing_user.is_admin = user_data.get('isAdmin', existing_user.is_admin)
                     updated_count += 1
                     continue
@@ -91,9 +91,11 @@ def update_users():
                 new_user = User(
                     username=user_data['fullName'],
                     email=user_data['email'],
-                    password_hash=user_data.get('password'),  # W produkcji hasło powinno być hashowane
+                    # password_hash=user_data.get('password'),  # Removed direct assignment
                     is_admin=user_data.get('isAdmin', False)
                 )
+                if user_data.get('password'): # Check if password is provided
+                    new_user.set_password(user_data.get('password')) # Use set_password
                 db.session.add(new_user)
                 new_count += 1
         
@@ -132,9 +134,10 @@ def register():
         new_user = User(
             username=data['fullName'],
             email=data['email'],
-            password_hash=data['password'],  # W produkcji hasło powinno być hashowane
+            # password_hash=data['password'],  # Removed direct assignment
             is_admin=False
         )
+        new_user.set_password(data['password']) # Use set_password
         
         db.session.add(new_user)
         db.session.commit()
@@ -165,7 +168,7 @@ def login():
         user = User.query.filter_by(email=data['email']).first()
         
         # Sprawdź czy użytkownik istnieje i czy hasło jest poprawne
-        if not user or user.password_hash != data['password']:  # W produkcji porównanie zahashowanych haseł
+        if not user or not user.check_password(data['password']):  # Use check_password
             return jsonify({'error': 'Invalid email or password'}), 401
         
         # Zwróć dane użytkownika bez hasła
