@@ -17,6 +17,7 @@ from .models.user import User
 from .models.quiz import Quiz
 # Import controllers
 from .controllers.quiz_controller import QuizController
+from .controllers.user_controller import UserController # Added UserController import
 
 # Konfiguracja aplikacji
 app = Flask(__name__)
@@ -53,8 +54,15 @@ def get_users():
 
 # Dodaję obsługę aktualizacji danych użytkowników
 @app.route('/api/users', methods=['PUT'])
+@jwt_required()  # Protect this route
 def update_users():
-    """Aktualizuje listę użytkowników (używane przez frontend)"""
+    """Aktualizuje listę użytkowników (używane przez frontend). Tylko dla administratorów."""
+    current_user_id = get_jwt_identity()
+    current_user = User.query.get(current_user_id)
+
+    if not current_user or not current_user.is_admin:
+        return jsonify({'error': 'Admin access required'}), 403
+
     try:
         data = request.get_json()
         if not data or 'users' not in data:
@@ -73,9 +81,11 @@ def update_users():
                     # Aktualizuj istniejącego użytkownika
                     existing_user.username = user_data.get('fullName', existing_user.username)
                     existing_user.email = user_data.get('email', existing_user.email)
-                    if 'password' in user_data and user_data['password']: # Check if password is provided and not empty
-                        existing_user.set_password(user_data['password']) # Use set_password
-                    existing_user.is_admin = user_data.get('isAdmin', existing_user.is_admin)
+                    # Usunięto możliwość zmiany hasła przez ten endpoint
+                    # if 'password' in user_data and user_data['password']:
+                    #     existing_user.set_password(user_data['password'])
+                    if 'isAdmin' in user_data: # Allow admin to change isAdmin status
+                        existing_user.is_admin = user_data.get('isAdmin', existing_user.is_admin)
                     updated_count += 1
                     continue
             
@@ -86,22 +96,26 @@ def update_users():
                 if existing_user:
                     # Aktualizuj istniejącego użytkownika
                     existing_user.username = user_data.get('fullName', existing_user.username)
-                    if 'password' in user_data and user_data['password']: # Check if password is provided and not empty
-                        existing_user.set_password(user_data['password']) # Use set_password
-                    existing_user.is_admin = user_data.get('isAdmin', existing_user.is_admin)
+                    # Usunięto możliwość zmiany hasła przez ten endpoint
+                    # if 'password' in user_data and user_data['password']:
+                    #     existing_user.set_password(user_data['password'])
+                    if 'isAdmin' in user_data: # Allow admin to change isAdmin status
+                        existing_user.is_admin = user_data.get('isAdmin', existing_user.is_admin)
                     updated_count += 1
                     continue
             
-            # Jeśli nie znaleziono użytkownika, stwórz nowego
+            # Jeśli nie znaleziono użytkownika, stwórz nowego (admin operation)
             if 'fullName' in user_data and 'email' in user_data:
                 new_user = User(
                     username=user_data['fullName'],
                     email=user_data['email'],
-                    # password_hash=user_data.get('password'),  # Removed direct assignment
-                    is_admin=user_data.get('isAdmin', False)
+                    is_admin=user_data.get('isAdmin', False) # Admin can set isAdmin for new user
                 )
-                if user_data.get('password'): # Check if password is provided
-                    new_user.set_password(user_data.get('password')) # Use set_password
+                # Hasło dla nowego użytkownika powinno być ustawione w inny sposób,
+                # np. generowane losowo i wysyłane do użytkownika, lub użytkownik sam je ustawia przy pierwszym logowaniu.
+                # For now, new users created via this admin bulk endpoint won't have a password set here.
+                # if user_data.get('password'):
+                #     new_user.set_password(user_data.get('password'))
                 db.session.add(new_user)
                 new_count += 1
         
@@ -121,73 +135,99 @@ def update_users():
 @app.route('/api/register', methods=['POST'])
 def register():
     """Endpoint do rejestracji nowych użytkowników"""
-    try:
-        data = request.get_json()
-        if not data:
-            return jsonify({'error': 'No data provided'}), 400
-        
-        # Sprawdź wymagane pola
-        required_fields = ['fullName', 'email', 'password']
-        for field in required_fields:
-            if field not in data or not data[field].strip():
-                return jsonify({'error': f'Field {field} is required'}), 400
-        
-        # Sprawdź, czy użytkownik o podanym adresie email już istnieje
-        if User.query.filter_by(email=data['email']).first():
-            return jsonify({'error': 'User with this email already exists'}), 409
-        
-        # Tworzenie nowego użytkownika
-        new_user = User(
-            username=data['fullName'],
-            email=data['email'],
-            # password_hash=data['password'],  # Removed direct assignment
-            is_admin=False
-        )
-        new_user.set_password(data['password']) # Use set_password
-        
-        db.session.add(new_user)
-        db.session.commit()
-        
-        # Zwróć dane nowego użytkownika bez hasła
-        user_data = new_user.to_dict()
-        
-        return jsonify(user_data), 201
-    except Exception as e:
-        db.session.rollback()
-        app.logger.error(f"Registration error: {str(e)}")
-        return jsonify({'error': 'Registration failed'}), 500
+    data = request.get_json()
+    if not data:
+        return jsonify({'error': 'No data provided'}), 400
+
+    # Sprawdź wymagane pola - UserController can handle this
+    # required_fields = ['fullName', 'email', 'password']
+    # for field in required_fields:
+    #     if field not in data or not data[field].strip():
+    #         return jsonify({'error': f'Field {field} is required'}), 400
+
+    user, error_message, status_code = UserController.register_user(data)
+
+    if error_message:
+        return jsonify({'error': error_message}), status_code
+    
+    return jsonify(user.to_dict()), 201
+
 
 # Dodaję endpoint do logowania
 @app.route('/api/login', methods=['POST'])
 def login():
     """Endpoint do logowania użytkowników"""
-    try:
-        data = request.get_json()
-        if not data:
-            return jsonify({'error': 'No data provided'}), 400
-        
-        # Sprawdź wymagane pola
-        if 'email' not in data or 'password' not in data:
-            return jsonify({'error': 'Email and password are required'}), 400
-        
-        # Znajdź użytkownika po emailu
-        user = User.query.filter_by(email=data['email']).first()
-        
-        # Sprawdź czy użytkownik istnieje i czy hasło jest poprawne
-        if not user or not user.check_password(data['password']):  # Use check_password
-            return jsonify({'error': 'Invalid email or password'}), 401
-        
-        # Create tokens
-        access_token = create_access_token(identity=user.id)
-        refresh_token = create_refresh_token(identity=user.id) # Optional: if you want refresh token functionality
-        
-        # Zwróć dane użytkownika bez hasła
-        user_data = user.to_dict()
-        
-        return jsonify(user_data=user_data, access_token=access_token, refresh_token=refresh_token), 200 # Return tokens
-    except Exception as e:
-        app.logger.error(f"Login error: {str(e)}")
-        return jsonify({'error': 'Login failed'}), 500
+    data = request.get_json()
+    if not data:
+        return jsonify({'error': 'No data provided'}), 400
+
+    email = data.get('email')
+    password = data.get('password')
+
+    if not email or not password:
+        return jsonify({'error': 'Email and password are required'}), 400
+
+    user, error_message, status_code = UserController.login_user(email, password)
+
+    if error_message:
+        return jsonify({'error': error_message}), status_code
+    
+    # Create tokens
+    access_token = create_access_token(identity=user.id)
+    refresh_token = create_refresh_token(identity=user.id)
+    
+    return jsonify(user_data=user.to_dict(), access_token=access_token, refresh_token=refresh_token), 200
+
+@app.route('/api/users/me/profile', methods=['PUT'])
+@jwt_required()
+def update_my_profile():
+    """Endpoint for the logged-in user to update their own profile (fullName, email)."""
+    current_user_id = get_jwt_identity()
+    data = request.get_json()
+
+    if not data:
+        return jsonify({'error': 'No data provided'}), 400
+
+    # Filter data to only allow specific fields to be updated by the user themselves
+    allowed_updates = {
+        'fullName': data.get('fullName'),
+        'email': data.get('email')
+    }
+    # Remove None values if fields are not provided
+    update_data = {k: v for k, v in allowed_updates.items() if v is not None}
+
+    if not update_data:
+        return jsonify({'error': 'No valid data provided for update'}), 400
+
+    user, error_message, status_code = UserController.update_user_data(current_user_id, update_data)
+
+    if error_message:
+        return jsonify({'error': error_message}), status_code
+    
+    return jsonify(user.to_dict()), 200
+
+@app.route('/api/users/me/password', methods=['PUT'])
+@jwt_required()
+def change_my_password():
+    """Endpoint for the logged-in user to change their password."""
+    current_user_id = get_jwt_identity()
+    data = request.get_json()
+
+    if not data:
+        return jsonify({'error': 'No data provided'}), 400
+
+    current_password = data.get('currentPassword')
+    new_password = data.get('newPassword')
+
+    if not current_password or not new_password:
+        return jsonify({'error': 'Current password and new password are required'}), 400
+
+    success, error_message, status_code = UserController.change_password(current_user_id, current_password, new_password)
+
+    if error_message:
+        return jsonify({'error': error_message}), status_code
+    
+    return jsonify({'message': 'Password updated successfully'}), 200
 
 @app.route('/api/quiz', methods=['GET'])
 def get_quizzes():
@@ -219,12 +259,17 @@ def get_quiz(quiz_id):
     return jsonify(quiz)
 
 @app.route('/api/quiz', methods=['POST'])
+@jwt_required()  # Protect this route
 def create_quiz():
     """Endpoint do tworzenia nowego quizu"""
+    current_user_id = get_jwt_identity() # Get user ID from JWT
     data = request.get_json()
     
     if not data:
         return jsonify({'error': 'No data provided'}), 400
+    
+    # Ensure the quiz is created for the currently logged-in user
+    data['userId'] = current_user_id 
     
     quiz, error = QuizController.create_quiz(data)
     
@@ -234,13 +279,44 @@ def create_quiz():
     return jsonify(quiz), 201
 
 @app.route('/api/quiz/<int:quiz_id>', methods=['PUT'])
+@jwt_required()  # Protect this route
 def update_quiz(quiz_id):
     """Endpoint do aktualizacji istniejącego quizu"""
+    current_user_id = get_jwt_identity()
+    current_user = User.query.get(current_user_id)
+    quiz_to_update, error = QuizController.get_quiz_by_id(quiz_id) # We need the quiz object first to check ownership
+
+    if error:
+        return jsonify({'error': error}), 404 if error == "Quiz not found" else 400
+
+    if not quiz_to_update:
+        return jsonify({'error': 'Quiz not found'}), 404
+
+    # Check if the current user is the author of the quiz or an admin
+    # The quiz_to_update is a dict here, so we access userId via key
+    if quiz_to_update.get('userId') != current_user_id and (not current_user or not current_user.is_admin):
+        return jsonify({'error': 'Forbidden: You are not the author of this quiz or not an admin.'}), 403
+
     data = request.get_json()
     
     if not data:
         return jsonify({'error': 'No data provided'}), 400
     
+    # Prevent changing the userId during update, unless by an admin for specific reasons (not implemented here)
+    if 'userId' in data and data['userId'] != quiz_to_update.get('userId') and (not current_user or not current_user.is_admin):
+        return jsonify({'error': 'Forbidden: You cannot change the author of the quiz.'}), 403
+    elif 'userId' in data and data['userId'] != quiz_to_update.get('userId') and current_user and current_user.is_admin:
+        # Admin is allowed to change userId, proceed with caution or add specific logic if needed
+        pass # Explicitly allow admin to change userId if necessary, though generally not recommended via generic update
+    elif 'userId' in data and data['userId'] == quiz_to_update.get('userId'):
+        # If userId is in data but it's the same, it's fine
+        pass
+    else:
+        # If userId is not in data, ensure it's not accidentally removed or changed by QuizController
+        # Best practice: QuizController.update_quiz should handle this, or we ensure data sent to it is correct.
+        # For now, we assume QuizController.update_quiz doesn't change userId unless explicitly in data.
+        pass 
+
     quiz, error = QuizController.update_quiz(quiz_id, data)
     
     if error:
@@ -249,8 +325,24 @@ def update_quiz(quiz_id):
     return jsonify(quiz)
 
 @app.route('/api/quiz/<int:quiz_id>', methods=['DELETE'])
+@jwt_required()  # Protect this route
 def delete_quiz(quiz_id):
     """Endpoint do usuwania quizu"""
+    current_user_id = get_jwt_identity()
+    current_user = User.query.get(current_user_id)
+    quiz_to_delete, error = QuizController.get_quiz_by_id(quiz_id) # We need the quiz object first to check ownership
+
+    if error: # This error is from get_quiz_by_id
+        return jsonify({'error': error}), 404 if error == "Quiz not found" else 400
+    
+    if not quiz_to_delete: # Should be caught by the error above, but as a safeguard
+        return jsonify({'error': 'Quiz not found'}), 404
+
+    # Check if the current user is the author of the quiz or an admin
+    # The quiz_to_delete is a dict here, so we access userId via key
+    if quiz_to_delete.get('userId') != current_user_id and (not current_user or not current_user.is_admin):
+        return jsonify({'error': 'Forbidden: You are not the author of this quiz or not an admin.'}), 403
+
     success, error = QuizController.delete_quiz(quiz_id)
     
     if error:
