@@ -3,6 +3,7 @@ Kontroler do operacji na użytkownikach
 """
 import sys
 import os
+import re # Added for email validation
 from flask import current_app
 from pathlib import Path
 from sqlalchemy.exc import IntegrityError # Import IntegrityError
@@ -34,46 +35,63 @@ class UserController:
             required_fields = ['fullName', 'email', 'password']
             for field in required_fields:
                 if field not in data or not data[field].strip():
-                    return None, f"Field {field} is required"
+                    return None, f"Field {field} is required", 400
             
+            fullName = data['fullName'].strip()
+            email = data['email'].strip()
+            password = data['password'] # Keep as is for now, strip whitespace if needed during set_password
+
+            # Walidacja fullName
+            if not (1 <= len(fullName) <= 80):
+                return None, "Full name must be between 1 and 80 characters.", 400
+
+            # Walidacja email
+            email_regex = r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$".strip()
+            if not re.match(email_regex, email):
+                return None, "Invalid email format.", 400
+
+            # Walidacja hasła
+            if len(password) < 6:
+                return None, "Password must be at least 6 characters long.", 400
+
             # Sprawdź, czy użytkownik o podanym adresie email już istnieje
-            if User.query.filter_by(email=data['email']).first():
-                return None, "User with this email already exists"
+            if User.query.filter_by(email=email).first():
+                return None, "User with this email already exists", 409
             
             # Sprawdź, czy użytkownik o podanej nazwie użytkownika (fullName) już istnieje
             # Jeśli username ma być unikalne, to odkomentuj poniższy blok
-            # if User.query.filter_by(username=data['fullName']).first():
-            #     return None, "User with this username already exists"
+            # if User.query.filter_by(username=fullName).first():
+            #     return None, "User with this username already exists", 409
 
             # Tworzenie nowego użytkownika
             new_user = User(
-                username=data['fullName'],
-                email=data['email'],
+                username=fullName,
+                email=email,
                 is_admin=False
             )
             
             # Bezpieczne ustawienie hasła
-            new_user.set_password(data['password'])
+            new_user.set_password(password)
             
             db.session.add(new_user)
             db.session.commit()
             
             # Zwróć dane nowego użytkownika bez hasła
-            return new_user.to_dict(), None
+            return new_user, None, 201 # Return user object, no error, status 201
         except IntegrityError as e: # Przechwytywanie konkretnego błędu bazy danych
             db.session.rollback()
             current_app.logger.error(f"Registration IntegrityError: {str(e)}")
             # Sprawdzenie, czy błąd dotyczy email, czy username (jeśli username miałoby być unikalne)
             if 'users.email' in str(e).lower():
-                 return None, "User with this email already exists."
+                 return None, "User with this email already exists.", 409
             # Można dodać podobne sprawdzenie dla 'users.username', jeśli byłoby unikalne
             # elif 'users.username' in str(e).lower():
-            #     return None, "This username is already taken."
-            return None, "Registration failed due to a database conflict. Please try different data."
+            #     return None, "This username is already taken.", 409
+            return None, "Registration failed due to a database conflict.", 409
         except Exception as e:
             db.session.rollback()
             current_app.logger.error(f"Generic registration error: {str(e)}")
-            return None, "An unexpected error occurred during registration. Please try again."
+            return None, "An unexpected error occurred during registration.", 500
     
     @staticmethod
     def login_user(email, password):
@@ -118,26 +136,47 @@ class UserController:
         try:
             user = User.query.get(user_id)
             if not user:
-                return None, "User not found"
+                return None, "User not found", 404
 
-            # Walidacja i aktualizacja fullName (username)
-            if 'fullName' in data and data['fullName'].strip():
-                user.username = data['fullName'].strip()
+            # app.py already ensures data is not empty and contains only relevant keys.
+            # Validate and update fullName (username)
+            if 'fullName' in data:
+                fullName = data['fullName'].strip()
+                if not fullName: # Check if stripping results in empty string
+                    return None, "Full name cannot be empty if provided for update.", 400
+                if not (1 <= len(fullName) <= 80):
+                    return None, "Full name must be between 1 and 80 characters.", 400
+                user.username = fullName
             
-            # Walidacja i aktualizacja email
-            if 'email' in data and data['email'].strip():
-                # Sprawdź, czy nowy email nie jest już zajęty przez innego użytkownika
-                existing_user_with_email = User.query.filter(User.email == data['email'].strip(), User.id != user_id).first()
-                if existing_user_with_email:
-                    return None, "Email already in use by another account"
-                user.email = data['email'].strip()
+            # Validate and update email
+            if 'email' in data:
+                email = data['email'].strip()
+                if not email: # Check if stripping results in empty string
+                    return None, "Email cannot be empty if provided for update.", 400
+                
+                email_regex = r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$".strip() # Regex itself doesn't need strip, but kept for consistency if copied
+                if not re.match(email_regex, email):
+                    return None, "Invalid email format.", 400
+                
+                # Check for email uniqueness only if the email is actually changing
+                if email != user.email:
+                    existing_user_with_email = User.query.filter(User.email == email, User.id != user_id).first()
+                    if existing_user_with_email:
+                        return None, "Email already in use by another account.", 409
+                user.email = email
             
-            db.session.commit()
-            return user.to_dict(), None
+            db.session.commit() # SQLAlchemy is smart enough to not issue an UPDATE if values haven't changed
+            return user, None, 200 # Return updated user object
+        except IntegrityError as e: 
+            db.session.rollback()
+            current_app.logger.error(f"User data update IntegrityError: {str(e)}")
+            if 'users.email' in str(e).lower(): # Defensive check
+                 return None, "Email already in use by another account.", 409
+            return None, "Update failed due to a database conflict.", 409
         except Exception as e:
             db.session.rollback()
             current_app.logger.error(f"User data update error: {str(e)}")
-            return None, f"User data update failed: {str(e)}"
+            return None, f"User data update failed: {str(e)}", 500
 
     @staticmethod
     def change_password(user_id, current_password, new_password):
@@ -145,21 +184,29 @@ class UserController:
         try:
             user = User.query.get(user_id)
             if not user:
-                return None, "User not found"
+                return None, "User not found", 404
+
+            if not current_password or not new_password: # Basic check for empty inputs
+                return None, "Current password and new password are required.", 400
 
             if not user.check_password(current_password):
-                return None, "Invalid current password"
+                return None, "Invalid current password", 403 # 403 Forbidden might be more appropriate
 
-            if len(new_password) < 6: # Zgodnie z walidacją frontendu
-                return None, "Password must be at least 6 characters long"
+            # Validate new_password (strip to ensure it's not just whitespace)
+            new_password_stripped = new_password.strip()
+            if not new_password_stripped:
+                return None, "New password cannot be empty or just whitespace.", 400
+            
+            if len(new_password_stripped) < 6: # Zgodnie z walidacją frontendu
+                return None, "Password must be at least 6 characters long", 400
 
-            user.set_password(new_password)
+            user.set_password(new_password_stripped)
             db.session.commit()
-            return {"message": "Password changed successfully"}, None
+            return {"message": "Password changed successfully"}, None, 200
         except Exception as e:
             db.session.rollback()
             current_app.logger.error(f"Password change error: {str(e)}")
-            return None, f"Password change failed: {str(e)}"
+            return None, f"Password change failed: {str(e)}", 500
             
     @staticmethod
     def update_users(users_data):
