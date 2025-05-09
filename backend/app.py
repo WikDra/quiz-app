@@ -4,6 +4,7 @@ Zawiera również definicje modeli i konfigurację bazy danych.
 """
 import os
 import json
+from datetime import timedelta # Added for token expiration
 from flask import Flask, jsonify, request
 from flask_migrate import Migrate
 from flask_cors import CORS
@@ -21,17 +22,28 @@ from .controllers.user_controller import UserController # Added UserController i
 
 # Konfiguracja aplikacji
 app = Flask(__name__)
-app.config['SECRET_KEY'] = 'dev_key_for_quiz_app' # Fallback, should be overridden by JWT_SECRET_KEY
+
+# Load secret keys from environment variables with fallbacks for development
+# IMPORTANT: For production, set these environment variables to strong, unique values.
+app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev_secret_key_fallback')
+app.config['JWT_SECRET_KEY'] = os.environ.get('JWT_SECRET_KEY', 'dev_jwt_secret_key_fallback') # Changed
+
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(os.path.dirname(__file__), 'quiz_app.db')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-app.config["JWT_SECRET_KEY"] = "super-secret-jwt-key-change-this"  # Change this in production!
-app.config["JWT_ACCESS_TOKEN_EXPIRES"] = False # For testing, consider setting an expiration time
-app.config["JWT_REFRESH_TOKEN_EXPIRES"] = False # For testing, consider setting an expiration time
+# Configure token expiration times
+app.config["JWT_ACCESS_TOKEN_EXPIRES"] = timedelta(hours=1) # Example: 1 hour
+app.config["JWT_REFRESH_TOKEN_EXPIRES"] = timedelta(days=30) # Example: 30 days
 
 
 # Inicjalizacja rozszerzeń
 migrate = Migrate(app, db) # Initialize Migrate with the imported db
-CORS(app)
+
+# Configure CORS more restrictively for production
+# FRONTEND_URL should be set as an environment variable in production
+# For development, you might allow '*' or specific local origins.
+frontend_url = os.environ.get('FRONTEND_URL', 'http://localhost:5173') # Default to common Vite dev port
+CORS(app, resources={r"/api/*": {"origins": frontend_url}}) # Restrict to frontend URL
+
 jwt = JWTManager(app) # Initialize JWTManager
 
 # API Endpoints
@@ -365,4 +377,6 @@ if __name__ == '__main__':
         print("Inicjalizacja bazy danych...")
         init_db()
     
-    app.run(host='127.0.0.1', port=5000, debug=True)
+    # For production, use a WSGI server like Gunicorn or uWSGI instead of app.run()
+    # and ensure debug is set to False.
+    app.run(host='127.0.0.1', port=5000, debug=True) # debug=True is suitable for development
