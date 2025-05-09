@@ -5,6 +5,7 @@ import sys
 import os
 from flask import current_app
 from pathlib import Path
+from sqlalchemy.exc import IntegrityError # Import IntegrityError
 
 # Konfiguracja ścieżek
 module_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -39,6 +40,11 @@ class UserController:
             if User.query.filter_by(email=data['email']).first():
                 return None, "User with this email already exists"
             
+            # Sprawdź, czy użytkownik o podanej nazwie użytkownika (fullName) już istnieje
+            # Jeśli username ma być unikalne, to odkomentuj poniższy blok
+            # if User.query.filter_by(username=data['fullName']).first():
+            #     return None, "User with this username already exists"
+
             # Tworzenie nowego użytkownika
             new_user = User(
                 username=data['fullName'],
@@ -54,10 +60,20 @@ class UserController:
             
             # Zwróć dane nowego użytkownika bez hasła
             return new_user.to_dict(), None
+        except IntegrityError as e: # Przechwytywanie konkretnego błędu bazy danych
+            db.session.rollback()
+            current_app.logger.error(f"Registration IntegrityError: {str(e)}")
+            # Sprawdzenie, czy błąd dotyczy email, czy username (jeśli username miałoby być unikalne)
+            if 'users.email' in str(e).lower():
+                 return None, "User with this email already exists."
+            # Można dodać podobne sprawdzenie dla 'users.username', jeśli byłoby unikalne
+            # elif 'users.username' in str(e).lower():
+            #     return None, "This username is already taken."
+            return None, "Registration failed due to a database conflict. Please try different data."
         except Exception as e:
             db.session.rollback()
-            current_app.logger.error(f"Registration error: {str(e)}")
-            return None, f"Registration failed: {str(e)}"
+            current_app.logger.error(f"Generic registration error: {str(e)}")
+            return None, "An unexpected error occurred during registration. Please try again."
     
     @staticmethod
     def login_user(email, password):
