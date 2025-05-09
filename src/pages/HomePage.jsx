@@ -41,7 +41,10 @@ const NavigationBar = memo(({
   toggleNotifications,
   onNotificationClick,
   user,
-  onLogout
+  onLogout,
+  showUserMenu,
+  toggleUserMenu,
+  onSettingsClick
 }) => {
   const unreadNotificationsCount = useMemo(
     () => notifications.filter(n => n.unread).length,
@@ -85,18 +88,28 @@ const NavigationBar = memo(({
               onNotificationClick={onNotificationClick} 
             />
           )}
+        </div>        <div className="user-profile-container">
+          <button 
+            className="user-profile"
+            onClick={toggleUserMenu}
+            aria-label="Profil użytkownika"
+          >
+            <img src={user.avatar} alt={`Awatar ${user.fullName}`} />
+            <span>{user.fullName}</span>
+          </button>
+          {showUserMenu && (
+            <div className="user-menu-dropdown">
+              <button onClick={onSettingsClick} className="user-menu-item">
+                <FontAwesomeIcon icon={faUser} />
+                <span>Ustawienia konta</span>
+              </button>
+              <button onClick={onLogout} className="user-menu-item">
+                <FontAwesomeIcon icon={faSignOut} />
+                <span>Wyloguj się</span>
+              </button>
+            </div>
+          )}
         </div>
-        <div className="user-profile">
-          <img src={user.avatar} alt={`Awatar ${user.fullName}`} />
-          <span>{user.fullName}</span>
-        </div>
-        <button 
-          className="logout-button" 
-          onClick={onLogout}
-          aria-label="Wyloguj się"
-        >
-          <FontAwesomeIcon icon={faSignOut} />
-        </button>
       </div>
     </nav>
   );
@@ -279,8 +292,7 @@ const HomePage = () => {
   const { user, logout } = useAuth();
   const { quizzes, deleteQuiz, loading, error, refreshQuizzes, filterQuizzes } = useQuiz();
   const navigate = useNavigate();
-  
-  // Stany komponentu
+    // Stany komponentu
   const [searchQuery, setSearchQuery] = useState('');
   const [notifications, setNotifications] = useState([
     { id: 1, text: 'Nowy quiz dostępny: "Cyberbezpieczeństwo 2024"', unread: true },
@@ -288,6 +300,7 @@ const HomePage = () => {
     { id: 3, text: 'Przypomnienie o quizie: "Podstawy Sieci"', unread: false }
   ]);
   const [showNotifications, setShowNotifications] = useState(false);
+  const [showUserMenu, setShowUserMenu] = useState(false);
   const [selectedQuiz, setSelectedQuiz] = useState(null);
   const [selectedCategory, setSelectedCategory] = useState('');
 
@@ -320,12 +333,14 @@ const HomePage = () => {
     refreshQuizzes();
     // Pusta tablica zależności, żeby wywołać tylko raz przy montowaniu komponentu
   }, []); // Usunięto refreshQuizzes z zależności
-
-  // Zamknij powiadomienia po kliknięciu poza nimi
+  // Zamknij powiadomienia i menu użytkownika po kliknięciu poza nimi
   useEffect(() => {
     const handleClickOutside = (event) => {
       if (showNotifications && !event.target.closest('.notifications-container')) {
         setShowNotifications(false);
+      }
+      if (showUserMenu && !event.target.closest('.user-profile-container')) {
+        setShowUserMenu(false);
       }
     };
 
@@ -333,7 +348,7 @@ const HomePage = () => {
     return () => {
       document.removeEventListener('click', handleClickOutside);
     };
-  }, [showNotifications]);
+  }, [showNotifications, showUserMenu]);
 
   // Memoizowane wartości
   const sortedQuizzes = useMemo(() => 
@@ -415,6 +430,14 @@ const HomePage = () => {
     e.stopPropagation();
     navigate('/create-quiz', { state: { quiz } });
   }, [navigate]);
+  const toggleUserMenu = useCallback(() => {
+    setShowUserMenu(prev => !prev);
+  }, []);
+  
+  const handleSettingsClick = useCallback(() => {
+    navigate('/user-settings');
+    setShowUserMenu(false);
+  }, [navigate]);
 
   const handleLogout = useCallback(() => {
     logout();
@@ -445,8 +468,7 @@ const HomePage = () => {
 
   return (
     <div className="home-container">
-      {/* Navigation */}
-      <NavigationBar 
+      {/* Navigation */}      <NavigationBar 
         searchQuery={searchQuery}
         onSearchChange={handleSearchChange}
         onSearch={handleSearch}
@@ -456,6 +478,9 @@ const HomePage = () => {
         onNotificationClick={handleNotificationClick}
         user={user}
         onLogout={handleLogout}
+        showUserMenu={showUserMenu}
+        toggleUserMenu={toggleUserMenu}
+        onSettingsClick={handleSettingsClick}
       />
 
       <div className="main-content">

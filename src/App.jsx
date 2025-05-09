@@ -12,6 +12,7 @@ const HomePage = lazy(() => import('./pages/HomePage'));
 const LandingPage = lazy(() => import('./pages/LandingPage'));
 const CreateQuiz = lazy(() => import('./pages/CreateQuiz'));
 const SolveQuiz = lazy(() => import('./pages/SolveQuiz'));
+const UserSettings = lazy(() => import('./pages/UserSettings'));
 
 // Komponent ładowania dla Suspense
 const LoadingFallback = memo(() => (
@@ -121,10 +122,14 @@ const AppRoutes = memo(() => {
             <PrivateRoute>
               <CreateQuiz />
             </PrivateRoute>
-          } />
-          <Route path="/solve-quiz/:id" element={
+          } />          <Route path="/solve-quiz/:id" element={
             <PrivateRoute>
               <SolveQuiz />
+            </PrivateRoute>
+          } />
+          <Route path="/user-settings" element={
+            <PrivateRoute>
+              <UserSettings />
             </PrivateRoute>
           } />
           <Route path="/" element={user ? <Navigate to="/home" /> : <LandingPage />} />

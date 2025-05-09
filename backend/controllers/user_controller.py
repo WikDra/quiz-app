@@ -95,7 +95,56 @@ class UserController:
             db.session.rollback()
             current_app.logger.error(f"Avatar update error: {str(e)}")
             return None, f"Avatar update failed: {str(e)}"
-    
+
+    @staticmethod
+    def update_user_data(user_id, data):
+        """Aktualizuje dane użytkownika (fullName, email)"""
+        try:
+            user = User.query.get(user_id)
+            if not user:
+                return None, "User not found"
+
+            # Walidacja i aktualizacja fullName (username)
+            if 'fullName' in data and data['fullName'].strip():
+                user.username = data['fullName'].strip()
+            
+            # Walidacja i aktualizacja email
+            if 'email' in data and data['email'].strip():
+                # Sprawdź, czy nowy email nie jest już zajęty przez innego użytkownika
+                existing_user_with_email = User.query.filter(User.email == data['email'].strip(), User.id != user_id).first()
+                if existing_user_with_email:
+                    return None, "Email already in use by another account"
+                user.email = data['email'].strip()
+            
+            db.session.commit()
+            return user.to_dict(), None
+        except Exception as e:
+            db.session.rollback()
+            current_app.logger.error(f"User data update error: {str(e)}")
+            return None, f"User data update failed: {str(e)}"
+
+    @staticmethod
+    def change_password(user_id, current_password, new_password):
+        """Zmienia hasło użytkownika"""
+        try:
+            user = User.query.get(user_id)
+            if not user:
+                return None, "User not found"
+
+            if not user.check_password(current_password):
+                return None, "Invalid current password"
+
+            if len(new_password) < 6: # Zgodnie z walidacją frontendu
+                return None, "Password must be at least 6 characters long"
+
+            user.set_password(new_password)
+            db.session.commit()
+            return {"message": "Password changed successfully"}, None
+        except Exception as e:
+            db.session.rollback()
+            current_app.logger.error(f"Password change error: {str(e)}")
+            return None, f"Password change failed: {str(e)}"
+            
     @staticmethod
     def update_users(users_data):
         """Aktualizuje dane wielu użytkowników"""

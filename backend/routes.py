@@ -30,7 +30,8 @@ def register_routes(app):
         """Endpoint do sprawdzania stanu aplikacji"""
         return jsonify({'status': 'ok', 'message': 'Server is running'})
     
-    # Endpointy dla użytkowników    @app.route('/api/users')
+    # Endpointy dla użytkowników
+    @app.route('/api/users')
     def get_users():
         """Zwraca listę użytkowników"""
         users, error = UserController.get_all_users()
@@ -85,7 +86,43 @@ def register_routes(app):
         if error:
             return jsonify({'error': error}), 401 if "Invalid email or password" in error else 400
         return jsonify(user)
-    
+
+    @app.route('/api/users/<int:user_id>', methods=['PUT'])
+    def update_user_data_route(user_id):
+        """Endpoint do aktualizacji danych użytkownika (imię, email)"""
+        app.logger.info(f"Attempting to update data for user_id: {user_id}") # Dodane logowanie
+        data = request.get_json()
+        if not data:
+            return jsonify({'error': 'No data provided'}), 400
+        
+        # Spodziewane pola: fullName, email
+        user_data, error = UserController.update_user_data(user_id, data)
+        if error:
+            status_code = 404 if error == "User not found" else 400
+            if "Email already in use" in error:
+                status_code = 409 # Conflict
+            return jsonify({'error': error}), status_code
+        return jsonify(user_data)
+
+    @app.route('/api/users/<int:user_id>/change-password', methods=['PUT'])
+    def change_password_route(user_id):
+        """Endpoint do zmiany hasła użytkownika"""
+        data = request.get_json()
+        if not data or 'currentPassword' not in data or 'newPassword' not in data:
+            return jsonify({'error': 'Missing currentPassword or newPassword'}), 400
+        
+        result, error = UserController.change_password(
+            user_id,
+            data['currentPassword'],
+            data['newPassword']
+        )
+        if error:
+            status_code = 404 if error == "User not found" else 400
+            if "Invalid current password" in error or "Password must be at least 6 characters long" in error:
+                status_code = 400
+            return jsonify({'error': error}), status_code
+        return jsonify(result)
+
     # Endpointy dla quizów
     @app.route('/api/quiz', methods=['GET'])
     def get_quizzes():

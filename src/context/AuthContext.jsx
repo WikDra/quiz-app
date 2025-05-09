@@ -241,12 +241,12 @@ export const AuthProvider = ({ children }) => {
       </div>
     );
   }
-
   const contextValue = {
     user,
     login,
     logout,
     register,
+    updateUserAvatar,
     updateUserData,
     error,
     refreshUsers: fetchUsers
