@@ -8,6 +8,7 @@ from flask import Flask, jsonify, request
 from flask_migrate import Migrate
 from flask_cors import CORS
 import hashlib  # Dodaję import biblioteki do hashowania haseł
+from flask_jwt_extended import create_access_token, create_refresh_token, jwt_required, JWTManager, get_jwt_identity # Added JWT imports
 
 # Import db instance from backend package
 from . import db
@@ -19,13 +20,18 @@ from .controllers.quiz_controller import QuizController
 
 # Konfiguracja aplikacji
 app = Flask(__name__)
-app.config['SECRET_KEY'] = 'dev_key_for_quiz_app'
+app.config['SECRET_KEY'] = 'dev_key_for_quiz_app' # Fallback, should be overridden by JWT_SECRET_KEY
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(os.path.dirname(__file__), 'quiz_app.db')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+app.config["JWT_SECRET_KEY"] = "super-secret-jwt-key-change-this"  # Change this in production!
+app.config["JWT_ACCESS_TOKEN_EXPIRES"] = False # For testing, consider setting an expiration time
+app.config["JWT_REFRESH_TOKEN_EXPIRES"] = False # For testing, consider setting an expiration time
+
 
 # Inicjalizacja rozszerzeń
 migrate = Migrate(app, db) # Initialize Migrate with the imported db
 CORS(app)
+jwt = JWTManager(app) # Initialize JWTManager
 
 # API Endpoints
 @app.route('/api/health')
@@ -171,10 +177,14 @@ def login():
         if not user or not user.check_password(data['password']):  # Use check_password
             return jsonify({'error': 'Invalid email or password'}), 401
         
+        # Create tokens
+        access_token = create_access_token(identity=user.id)
+        refresh_token = create_refresh_token(identity=user.id) # Optional: if you want refresh token functionality
+        
         # Zwróć dane użytkownika bez hasła
         user_data = user.to_dict()
         
-        return jsonify(user_data), 200
+        return jsonify(user_data=user_data, access_token=access_token, refresh_token=refresh_token), 200 # Return tokens
     except Exception as e:
         app.logger.error(f"Login error: {str(e)}")
         return jsonify({'error': 'Login failed'}), 500
