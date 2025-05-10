@@ -10,6 +10,8 @@ from flask_migrate import Migrate
 from flask_cors import CORS
 import hashlib  # Dodaję import biblioteki do hashowania haseł
 from flask_jwt_extended import create_access_token, create_refresh_token, jwt_required, JWTManager, get_jwt_identity # Added JWT imports
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address 
 
 # Import db instance from backend package
 from . import db
@@ -22,6 +24,15 @@ from .controllers.user_controller import UserController # Added UserController i
 
 # Konfiguracja aplikacji
 app = Flask(__name__)
+
+# Configure rate limiting
+limiter = Limiter(
+    get_remote_address, # Use get_remote_address to identify clients by IP
+    app=app,
+    default_limits=["200 per day", "50 per hour"], # Default limits for all routes
+    storage_uri="memory://",  # For production, consider a persistent storage like Redis (e.g., "redis://localhost:6379")
+    strategy="fixed-window" # Strategy for rate limiting (other option: "moving-window")
+)
 
 # Load secret keys from environment variables with fallbacks for development
 # IMPORTANT: For production, set these environment variables to strong, unique values.
@@ -167,6 +178,7 @@ def register():
 
 # Dodaję endpoint do logowania
 @app.route('/api/login', methods=['POST'])
+@limiter.limit("5 per 15 minute") # Apply specific rate limit to the login route
 def login():
     """Endpoint do logowania użytkowników"""
     data = request.get_json()
