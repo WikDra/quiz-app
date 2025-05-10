@@ -58,28 +58,100 @@ class QuizController:
     @staticmethod
     def create_quiz(data):
         """Tworzy nowy quiz"""
+        # Validation
+        required_fields = ['title', 'category', 'difficulty', 'questions']
+        for field in required_fields:
+            if field not in data or not data[field]:
+                return None, f"Missing required field: {field}", 400
+
+        title = data.get('title')
+        if not (1 <= len(title) <= 100):
+            return None, "Title must be between 1 and 100 characters.", 400
+
+        description = data.get('description')
+        if description and len(description) > 500:
+            return None, "Description must be at most 500 characters.", 400
+
+        category = data.get('category')
+        if not category: # Already checked by required_fields, but good for clarity
+            return None, "Category cannot be empty.", 400
+        # Optional: Add validation against a predefined list of categories
+        # predefined_categories = ["Science", "History", "General Knowledge"]
+        # if category not in predefined_categories:
+        #     return None, f"Invalid category. Allowed categories are: {', '.join(predefined_categories)}", 400
+
+        difficulty = data.get('difficulty')
+        if not difficulty: # Already checked by required_fields
+            return None, "Difficulty cannot be empty.", 400
+        # Optional: Add validation against a predefined list of difficulties
+        # predefined_difficulties = ["Easy", "Medium", "Hard"]
+        # if difficulty not in predefined_difficulties:
+        #     return None, f"Invalid difficulty. Allowed difficulties are: {', '.join(predefined_difficulties)}", 400
+
+        time_limit = data.get('timeLimit')
+        if time_limit is not None:
+            if not isinstance(time_limit, int) or time_limit < 0:
+                return None, "Time limit must be a non-negative integer.", 400
+
+        questions = data.get('questions')
+        if not isinstance(questions, list) or not questions:
+            return None, "Questions list cannot be empty.", 400
+
+        for i, q_data in enumerate(questions):
+            if not isinstance(q_data, dict):
+                return None, f"Question at index {i} must be an object.", 400
+            
+            q_text = q_data.get('questionText')
+            if not q_text or not isinstance(q_text, str):
+                return None, f"Question text for question {i+1} cannot be empty.", 400
+
+            answers = q_data.get('answers')
+            if not isinstance(answers, list) or len(answers) < 2:
+                return None, f"Question {i+1} must have at least 2 answers.", 400
+
+            correct_answers_count = 0
+            for j, ans_data in enumerate(answers):
+                if not isinstance(ans_data, dict):
+                    return None, f"Answer at index {j} for question {i+1} must be an object.", 400
+                
+                ans_text = ans_data.get('answerText')
+                if not ans_text or not isinstance(ans_text, str):
+                    return None, f"Answer text for answer {j+1} in question {i+1} cannot be empty.", 400
+                
+                is_correct = ans_data.get('isCorrect')
+                if not isinstance(is_correct, bool):
+                    return None, f"isCorrect flag for answer {j+1} in question {i+1} must be a boolean.", 400
+                if is_correct:
+                    correct_answers_count += 1
+            
+            if correct_answers_count == 0:
+                return None, f"Question {i+1} must have at least one correct answer.", 400
+
         try:
             new_quiz = Quiz(
-                title=data.get('title', ''),
-                description=data.get('description', ''),
-                category=data.get('category'),
-                difficulty=data.get('difficulty'),
-                time_limit=data.get('timeLimit'),
-                user_id=data.get('userId'),
-                created_at=data.get('createdAt'),
-                last_modified=data.get('lastModified')
+                title=title,
+                description=description,
+                category=category,
+                difficulty=difficulty,
+                time_limit=time_limit,
+                user_id=data.get('userId'), # Assuming userId is validated elsewhere or comes from authenticated user
+                # created_at and last_modified are usually handled by the database or ORM by default
             )
             
-            new_quiz.questions = data.get('questions', [])
+            # The questions structure in the Quiz model might need adjustment
+            # if it expects ORM objects rather than dicts.
+            # For now, assuming it can handle dicts or that the model's setter handles it.
+            new_quiz.questions = questions 
             
             db.session.add(new_quiz)
             db.session.commit()
             
-            return new_quiz.to_dict(), None
+            return new_quiz.to_dict(), None, 201 # Return 201 Created status
         except Exception as e:
             db.session.rollback()
-            current_app.logger.error(f"Database error: {str(e)}")
-            return None, "Database error occurred while creating quiz"
+            current_app.logger.error(f"Database error or other exception: {str(e)}")
+            # Consider more specific error handling if possible
+            return None, "An error occurred while creating the quiz.", 500
     
     @staticmethod
     def update_quiz(quiz_id, data):
@@ -87,25 +159,88 @@ class QuizController:
         try:
             quiz = Quiz.query.get(quiz_id)
             if not quiz:
-                return None, "Quiz not found"
+                return None, "Quiz not found", 404
+
+            # Validation for fields present in data
+            if 'title' in data:
+                title = data.get('title')
+                if not title or not (1 <= len(title) <= 100):
+                    return None, "Title must be between 1 and 100 characters.", 400
+                quiz.title = title
+
+            if 'description' in data:
+                description = data.get('description')
+                if description is not None and len(description) > 500: # Allow empty string to clear description
+                    return None, "Description must be at most 500 characters.", 400
+                quiz.description = description
+
+            if 'category' in data:
+                category = data.get('category')
+                if not category:
+                    return None, "Category cannot be empty.", 400
+                # Optional: Add validation against a predefined list of categories
+                quiz.category = category
+
+            if 'difficulty' in data:
+                difficulty = data.get('difficulty')
+                if not difficulty:
+                    return None, "Difficulty cannot be empty.", 400
+                # Optional: Add validation against a predefined list of difficulties
+                quiz.difficulty = difficulty
+
+            if 'timeLimit' in data:
+                time_limit = data.get('timeLimit')
+                if time_limit is not None:
+                    if not isinstance(time_limit, int) or time_limit < 0:
+                        return None, "Time limit must be a non-negative integer.", 400
+                quiz.time_limit = time_limit # Allows setting to None
             
-            quiz.title = data.get('title', quiz.title)
-            quiz.description = data.get('description', quiz.description)
-            quiz.category = data.get('category', quiz.category)
-            quiz.difficulty = data.get('difficulty', quiz.difficulty)
-            quiz.time_limit = data.get('timeLimit', quiz.time_limit)
-            quiz.last_modified = data.get('lastModified', quiz.last_modified)
-            
+            if 'lastModified' in data: # Usually handled by the application or DB trigger
+                quiz.last_modified = data.get('lastModified')
+
             if 'questions' in data:
-                quiz.questions = data.get('questions')
+                questions = data.get('questions')
+                if not isinstance(questions, list) or not questions:
+                    return None, "Questions list cannot be empty if provided.", 400
+
+                for i, q_data in enumerate(questions):
+                    if not isinstance(q_data, dict):
+                        return None, f"Question at index {i} must be an object.", 400
+                    
+                    q_text = q_data.get('questionText')
+                    if not q_text or not isinstance(q_text, str):
+                        return None, f"Question text for question {i+1} cannot be empty.", 400
+
+                    answers = q_data.get('answers')
+                    if not isinstance(answers, list) or len(answers) < 2:
+                        return None, f"Question {i+1} must have at least 2 answers.", 400
+
+                    correct_answers_count = 0
+                    for j, ans_data in enumerate(answers):
+                        if not isinstance(ans_data, dict):
+                            return None, f"Answer at index {j} for question {i+1} must be an object.", 400
+                        
+                        ans_text = ans_data.get('answerText')
+                        if not ans_text or not isinstance(ans_text, str):
+                            return None, f"Answer text for answer {j+1} in question {i+1} cannot be empty.", 400
+                        
+                        is_correct = ans_data.get('isCorrect')
+                        if not isinstance(is_correct, bool):
+                            return None, f"isCorrect flag for answer {j+1} in question {i+1} must be a boolean.", 400
+                        if is_correct:
+                            correct_answers_count += 1
+                    
+                    if correct_answers_count == 0:
+                        return None, f"Question {i+1} must have at least one correct answer.", 400
+                quiz.questions = questions
             
             db.session.commit()
             
-            return quiz.to_dict(), None
+            return quiz.to_dict(), None, 200
         except Exception as e:
             db.session.rollback()
-            current_app.logger.error(f"Database error: {str(e)}")
-            return None, "Database error occurred while updating quiz"
+            current_app.logger.error(f"Database error or other exception during update: {str(e)}")
+            return None, "An error occurred while updating the quiz.", 500
     
     @staticmethod
     def delete_quiz(quiz_id):
