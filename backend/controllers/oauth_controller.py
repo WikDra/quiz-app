@@ -18,6 +18,7 @@ if module_path not in sys.path:
 
 from __init__ import db
 from models.user import User
+from utils.helpers import sanitize_input, validate_email
 
 # Inicjalizacja OAuth
 oauth = OAuth()
@@ -26,14 +27,14 @@ def init_oauth(app):
     """
     Inicjalizuje obsługę OAuth dla aplikacji Flask.
     Należy wywołać tę funkcję w czasie konfiguracji aplikacji.
-    """
-    # Pobierz dane konfiguracyjne Google OAuth z zmiennych środowiskowych
+    """    # Pobierz dane konfiguracyjne Google OAuth z zmiennych środowiskowych
     # W rozwoju można użyć wartości testowych, ale w produkcji powinny być ustawione w zmiennych środowiskowych
     google_client_id = os.environ.get('GOOGLE_CLIENT_ID', '')
     google_client_secret = os.environ.get('GOOGLE_CLIENT_SECRET', '')
     
     if not google_client_id or not google_client_secret:
-        app.logger.error(f"Google OAuth credentials not set in environment variables. GOOGLE_CLIENT_ID={google_client_id}. Google login will not work.")
+        app.logger.error("Google OAuth credentials not set in environment variables. Google login will not work.")
+        app.logger.error("Please run 'python backend/utils/setup_security.py' to configure OAuth properly.")
     
     oauth.init_app(app)
     
@@ -84,15 +85,21 @@ class OAuthController:
                 if resp.status_code != 200:
                     return None, f"Failed to get user info: {resp.text}"
                 userinfo = resp.json()
+              # Informacje o użytkowniku z Google - sanityzacja danych
+            google_id = sanitize_input(userinfo.get('sub'))
+            email = sanitize_input(userinfo.get('email'))
+            full_name = sanitize_input(userinfo.get('name'))
+            avatar_url = sanitize_input(userinfo.get('picture'))  # Pobranie URL zdjęcia profilowego
             
-            # Informacje o użytkowniku z Google
-            google_id = userinfo.get('sub')
-            email = userinfo.get('email')
-            full_name = userinfo.get('name')
-            avatar_url = userinfo.get('picture')  # Pobranie URL zdjęcia profilowego
-            
+            # Walidacja podstawowych danych
             if not google_id or not email:
+                current_app.logger.warning("OAuth callback otrzymał niepełne dane od Google")
                 return None, "Invalid user information received from Google"
+                
+            # Dodatkowa walidacja emaila
+            if not validate_email(email):
+                current_app.logger.warning(f"OAuth callback otrzymał niepoprawny format emaila: {email}")
+                return None, "Invalid email format received from OAuth provider"
             
             # Sprawdź czy użytkownik już istnieje w bazie danych (według adresu email lub social_id)
             user = User.query.filter(
@@ -100,8 +107,13 @@ class OAuthController:
                 ((User.social_id == google_id) & (User.social_provider == 'google'))
             ).first()
             
-            if not user:
-                # Utwórz nowego użytkownika
+            if not user:                # Dodatkowa walidacja przed utworzeniem użytkownika
+                if not full_name or len(full_name.strip()) < 1:
+                    # Jeśli nie ma pełnej nazwy, użyj części emaila jako nazwy
+                    full_name = email.split('@')[0]
+                    current_app.logger.warning(f"Brak pełnej nazwy z Google, używam części email: {full_name}")
+                
+                # Utwórz nowego użytkownika z sanityzowanymi danymi
                 user = User(
                     username=full_name,
                     email=email,
@@ -110,9 +122,10 @@ class OAuthController:
                     avatar_url=avatar_url,
                     is_admin=False  # Nowi użytkownicy z OAuth nie są adminami
                 )
-                # Ustaw losowe hasło, które nie będzie używane (użytkownik loguje się przez Google)
-                import secrets
-                random_password = secrets.token_hex(16)
+                
+                # Ustaw silne losowe hasło, które nie będzie używane (użytkownik loguje się przez Google)
+                from utils.helpers import generate_secure_key
+                random_password = generate_secure_key(32)  # 32 bajty losowych danych
                 user.set_password(random_password)
                 
                 db.session.add(user)

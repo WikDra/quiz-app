@@ -13,7 +13,17 @@ from flask_limiter.util import get_remote_address
 
 # Import zmiennych środowiskowych
 from dotenv import load_dotenv
-load_dotenv()  # Ładowanie zmiennych z pliku .env, jeśli istnieje
+
+# Szukaj pliku .env w głównym katalogu backend
+dotenv_path = os.path.join(os.path.dirname(__file__), '.env')
+
+# Jeśli plik .env istnieje, załaduj go
+if os.path.exists(dotenv_path):
+    load_dotenv(dotenv_path=dotenv_path)
+    print(f"Załadowano zmienne środowiskowe z {dotenv_path}")
+else:
+    print("Nie znaleziono pliku .env. Używanie domyślnych kluczy bezpieczeństwa, co NIE jest zalecane.")
+    print("Uruchom python utils/setup_security.py, aby utworzyć bezpieczne klucze.")
 
 # Import db instance from backend package
 from . import db
@@ -39,8 +49,9 @@ limiter = Limiter(
 
 # Load secret keys from environment variables with fallbacks for development
 # IMPORTANT: For production, set these environment variables to strong, unique values.
-app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev_secret_key_fallback')
-app.config['JWT_SECRET_KEY'] = os.environ.get('JWT_SECRET_KEY', 'dev_jwt_secret_key_fallback') # Changed
+# Use utils/setup_security.py to generate secure keys and update the .env file
+app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'UNSAFE_DEV_KEY_PLEASE_RUN_SETUP_SECURITY')
+app.config['JWT_SECRET_KEY'] = os.environ.get('JWT_SECRET_KEY', 'UNSAFE_DEV_JWT_KEY_PLEASE_RUN_SETUP_SECURITY')
 
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(os.path.dirname(__file__), 'quiz_app.db')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
@@ -56,7 +67,12 @@ migrate = Migrate(app, db) # Initialize Migrate with the imported db
 # FRONTEND_URL should be set as an environment variable in production
 # For development, you might allow '*' or specific local origins.
 frontend_url = os.environ.get('FRONTEND_URL', 'http://localhost:5173') # Default to common Vite dev port
-CORS(app, resources={r"/api/*": {"origins": frontend_url}}) # Restrict to frontend URL
+CORS(app, resources={r"/api/*": {
+    "origins": frontend_url,
+    "supports_credentials": True,  # Pozwala na przesyłanie uwierzytelniania (np. cookies, authorization headers)
+    "allow_headers": ["Content-Type", "Authorization"],
+    "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
+}}) # Restrict to frontend URL
 
 # JWTManager jest już zainicjalizowany w __init__.py
 

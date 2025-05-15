@@ -22,12 +22,13 @@ def create_app():
     app = Flask(__name__)
     
     # Konfiguracja
-    app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev_key_for_quiz_app')
+    # Używaj bezpiecznych kluczy z zmiennych środowiskowych, generowanych przez utils/setup_security.py
+    app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'UNSAFE_DEV_KEY_PLEASE_RUN_SETUP_SECURITY')
     app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(os.path.dirname(__file__), 'quiz_app.db')
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
     
     # Konfiguracja JWT
-    app.config['JWT_SECRET_KEY'] = os.environ.get('JWT_SECRET_KEY', 'dev_jwt_secret_key_fallback')
+    app.config['JWT_SECRET_KEY'] = os.environ.get('JWT_SECRET_KEY', 'UNSAFE_DEV_JWT_KEY_PLEASE_RUN_SETUP_SECURITY')
     app.config["JWT_ACCESS_TOKEN_EXPIRES"] = timedelta(hours=1)
     app.config["JWT_REFRESH_TOKEN_EXPIRES"] = timedelta(days=30)
     
@@ -45,9 +46,20 @@ def create_app():
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
     )
 
-    # Załaduj zmienne środowiskowe (np. GOOGLE_CLIENT_ID/SECRET) przed inicjalizacją OAuth
+    # Załaduj zmienne środowiskowe (np. SECRET_KEY, JWT_SECRET_KEY, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET)
     from dotenv import load_dotenv
-    load_dotenv()
+    
+    # Szukaj pliku .env w głównym katalogu backend
+    dotenv_path = os.path.join(os.path.dirname(__file__), '.env')
+    
+    # Jeśli plik .env istnieje, załaduj go
+    if os.path.exists(dotenv_path):
+        load_dotenv(dotenv_path=dotenv_path)
+        app.logger.info(f"Załadowano zmienne środowiskowe z {dotenv_path}")
+    else:
+        app.logger.warning("Nie znaleziono pliku .env. Używanie domyślnych kluczy bezpieczeństwa, co NIE jest zalecane do produkcji.")
+        app.logger.warning("Uruchom python utils/setup_security.py, aby utworzyć bezpieczne klucze.")
+        
     # Inicjalizacja OAuth ( Google )
     # Initialize Google OAuth
     from controllers.oauth_controller import init_oauth

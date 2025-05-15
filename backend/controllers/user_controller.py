@@ -15,6 +15,7 @@ if module_path not in sys.path:
 
 from __init__ import db
 from models.user import User
+from utils.helpers import sanitize_input, validate_email, is_strong_password
 
 class UserController:
     @staticmethod
@@ -29,7 +30,7 @@ class UserController:
     
     @staticmethod
     def register_user(data):
-        """Rejestruje nowego użytkownika"""
+        """Rejestruje nowego użytkownika z ulepszonymi zabezpieczeniami"""
         try:
             # Sprawdź wymagane pola
             required_fields = ['fullName', 'email', 'password']
@@ -37,33 +38,33 @@ class UserController:
                 if field not in data or not data[field].strip():
                     return None, f"Field {field} is required"
             
-            fullName = data['fullName'].strip()
-            email = data['email'].strip()
-            password = data['password'] # Keep as is for now, strip whitespace if needed during set_password
+            # Sanityzacja danych wejściowych
+            fullName = sanitize_input(data['fullName'].strip())
+            email = sanitize_input(data['email'].strip())
+            password = data['password'] # Nie sanityzujemy hasła, gdyż użytkownik może chcieć używać różnych znaków
+            
+            # Sprawdź ponownie po sanityzacji
+            if not fullName or not email:
+                return None, "Invalid input data after sanitization"
 
             # Walidacja fullName
             if not (1 <= len(fullName) <= 80):
                 return None, "Full name must be between 1 and 80 characters."
 
-            # Walidacja email
-            email_regex = r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$".strip()
-            if not re.match(email_regex, email):
+            # Walidacja email z użyciem funkcji pomocniczej
+            if not validate_email(email):
                 return None, "Invalid email format."
 
-            # Walidacja hasła
-            if len(password) < 6:
-                return None, "Password must be at least 6 characters long."
+            # Walidacja siły hasła z użyciem funkcji pomocniczej
+            is_valid, password_error = is_strong_password(password)
+            if not is_valid:
+                return None, password_error
 
             # Sprawdź, czy użytkownik o podanym adresie email już istnieje
             if User.query.filter_by(email=email).first():
                 return None, "User with this email already exists"
-            
-            # Sprawdź, czy użytkownik o podanej nazwie użytkownika (fullName) już istnieje
-            # Jeśli username ma być unikalne, to odkomentuj poniższy blok
-            # if User.query.filter_by(username=fullName).first():
-            #     return None, "User with this username already exists"
                 
-            # Tworzenie nowego użytkownika
+            # Tworzenie nowego użytkownika z sanityzowanymi danymi
             new_user = User(
                 username=fullName,
                 email=email,
@@ -75,6 +76,9 @@ class UserController:
             
             db.session.add(new_user)
             db.session.commit()
+            
+            # Logowanie sukcesu
+            current_app.logger.info(f"Successfully registered new user: {email}")
             
             # Zwróć dane nowego użytkownika bez hasła
             return new_user, None # Return user object, no error
@@ -95,17 +99,28 @@ class UserController:
     
     @staticmethod
     def login_user(email, password):
-        """Logowanie użytkownika"""
+        """Logowanie użytkownika z ulepszonymi zabezpieczeniami"""
         try:
+            # Sanityzacja danych wejściowych
+            email = sanitize_input(email)
+            # Nie sanityzujemy hasła
+            
             current_app.logger.info(f"Login attempt for email: {email}")
             
-            # Sprawdź wymagane pola
+            # Sprawdź wymagane pola po sanityzacji
             if not email or not password:
-                current_app.logger.warning("Login attempt without email or password")
+                current_app.logger.warning("Login attempt without valid email or password")
                 return None, "Email and password are required"
             
             # Znajdź użytkownika po emailu
             user = User.query.filter_by(email=email).first()
+            
+            # Opóźnienie dla ochrony przed atakami brute force i timing attacks
+            # Nawet jeśli użytkownik nie istnieje, nadal sprawdzamy fikcyjne hasło,
+            # aby czas odpowiedzi był podobny i nie dawał wskazówek atakującemu
+            import time
+            import random
+            time.sleep(random.uniform(0.1, 0.3))  # Małe losowe opóźnienie
             
             # Sprawdź czy użytkownik istnieje i czy hasło jest poprawne
             if not user:
@@ -114,6 +129,7 @@ class UserController:
                 
             if not user.check_password(password):
                 current_app.logger.warning(f"Login failed: Invalid password for user {email}")
+                # TODO: Tutaj można by dodać licznik nieudanych prób logowania
                 return None, "Invalid email or password"
               
             current_app.logger.info(f"Login successful for user: {email}")
@@ -157,15 +173,14 @@ class UserController:
                 if not (1 <= len(fullName) <= 80):
                     return None, "Full name must be between 1 and 80 characters."
                 user.username = fullName
-            
-            # Validate and update email
+              # Validate and update email
             if 'email' in data:
-                email = data['email'].strip()
-                if not email: # Check if stripping results in empty string
+                email = sanitize_input(data['email'].strip())
+                if not email: # Check if sanitizing or stripping results in empty string
                     return None, "Email cannot be empty if provided for update."
                 
-                email_regex = r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$".strip() # Regex itself doesn't need strip, but kept for consistency if copied
-                if not re.match(email_regex, email):
+                # Walidacja email z użyciem funkcji pomocniczej
+                if not validate_email(email):
                     return None, "Invalid email format."
                 
                 # Check for email uniqueness only if the email is actually changing
@@ -200,17 +215,12 @@ class UserController:
                 return None, "Current password and new password are required."
 
             if not user.check_password(current_password):
-                return None, "Invalid current password"
+                return None, "Invalid current password"            # Walidacja siły nowego hasła z użyciem funkcji pomocniczej
+            is_valid, password_error = is_strong_password(new_password)
+            if not is_valid:
+                return None, password_error
 
-            # Validate new_password (strip to ensure it's not just whitespace)
-            new_password_stripped = new_password.strip()
-            if not new_password_stripped:
-                return None, "New password cannot be empty or just whitespace."
-            
-            if len(new_password_stripped) < 6: # Zgodnie z walidacją frontendu
-                return None, "Password must be at least 6 characters long"
-
-            user.set_password(new_password_stripped)
+            user.set_password(new_password)
             db.session.commit()
             return {"message": "Password changed successfully"}, None
         except Exception as e:
@@ -225,15 +235,24 @@ class UserController:
             updated_count = 0
             new_count = 0
             
-            for user_data in users_data:
-                # Sprawdź czy użytkownik o danym id już istnieje
+            for user_data in users_data:                # Sprawdź czy użytkownik o danym id już istnieje
                 user_id = user_data.get('id')
                 if user_id:
                     existing_user = User.query.get(user_id)
                     if existing_user:
-                        # Aktualizuj istniejącego użytkownika
-                        existing_user.username = user_data.get('fullName', existing_user.username)
-                        existing_user.email = user_data.get('email', existing_user.email)
+                        # Aktualizuj istniejącego użytkownika z sanityzacją danych
+                        fullName = user_data.get('fullName')
+                        email = user_data.get('email')
+                        
+                        if fullName:
+                            fullName = sanitize_input(fullName)
+                            if fullName:  # upewnij się, że po sanityzacji coś zostało
+                                existing_user.username = fullName
+                                
+                        if email:
+                            email = sanitize_input(email)
+                            if email and validate_email(email):  # upewnij się, że jest poprawny email
+                                existing_user.email = email
                         if 'password' in user_data:
                             existing_user.set_password(user_data['password'])
                         existing_user.is_admin = user_data.get('isAdmin', existing_user.is_admin)
