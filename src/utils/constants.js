@@ -48,6 +48,15 @@ export const USER_LEVELS = [
   'Ekspert'
 ];
 
+// Klucze dla localStorage
+export const STORAGE_KEYS = {
+  USER: 'quiz_app_user',
+  ACCESS_TOKEN: 'quiz_app_access_token',
+  REFRESH_TOKEN: 'quiz_app_refresh_token',
+  THEME: 'quiz_app_theme',
+  QUIZ_HISTORY: 'quiz_app_history'
+};
+
 // Limity i ograniczenia
 export const LIMITS = {
   MIN_QUESTIONS: 1,
@@ -63,11 +72,4 @@ export const ERROR_MESSAGES = {
   NETWORK_ERROR: 'Wystąpił problem z połączeniem sieciowym',
   AUTHENTICATION_REQUIRED: 'Musisz się zalogować, aby wykonać tę operację',
   INVALID_FORM: 'Formularz zawiera błędy. Sprawdź podane dane.'
-};
-
-// Klucze dla localStorage
-export const STORAGE_KEYS = {
-  USER: 'user',
-  THEME: 'theme',
-  RECENT_QUIZZES: 'recentQuizzes'
 };

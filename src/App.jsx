@@ -5,6 +5,8 @@ import { QuizProvider } from './context/QuizContext';
 import { LoadingSpinner, ErrorMessage } from './components/SharedComponents';
 import './styles/SharedComponents.css';
 
+import AuthStateLogger from './components/AuthStateLogger';
+const DebugAuthState = lazy(() => import('./components/DebugAuthState'));
 // Lazy loading komponentów stron
 const Login = lazy(() => import('./pages/Login'));
 const Register = lazy(() => import('./pages/Register'));
@@ -13,6 +15,7 @@ const LandingPage = lazy(() => import('./pages/LandingPage'));
 const CreateQuiz = lazy(() => import('./pages/CreateQuiz'));
 const SolveQuiz = lazy(() => import('./pages/SolveQuiz'));
 const UserSettings = lazy(() => import('./pages/UserSettings'));
+const OAuthCallback = lazy(() => import('./pages/OAuthCallback'));
 
 // Komponent ładowania dla Suspense
 const LoadingFallback = memo(() => (
@@ -132,6 +135,7 @@ const AppRoutes = memo(() => {
               <UserSettings />
             </PrivateRoute>
           } />
+          <Route path="/oauth-callback" element={<OAuthCallback />} />
           <Route path="/" element={user ? <Navigate to="/home" /> : <LandingPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
@@ -147,7 +151,9 @@ const App = memo(() => {
       <QuizProvider>
         <Router>
           <OnlineStatusHandler />
+          <AuthStateLogger />
           <AppRoutes />
+          <DebugAuthState />
         </Router>
       </QuizProvider>
     </AuthProvider>

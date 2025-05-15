@@ -34,6 +34,9 @@ quiz-app/
 - SQLite (baza danych)
 - Flask-Bcrypt (bezpieczne przechowywanie haseł)
 - Flask-CORS (obsługa Cross-Origin Requests)
+- Flask-JWT-Extended (uwierzytelnianie JWT)
+- Flask-Limiter (ochrona przed atakami brute-force)
+- Authlib (integracja OAuth2 z Google)
 
 ## Instalacja i uruchomienie
 
@@ -52,7 +55,20 @@ cd backend
 pip install -r requirements.txt
 ```
 
-### Uruchamianie aplikacji w trybie deweloperskim:
+### Konfiguracja:
+
+1. Utwórz plik `.env` w folderze `backend/` na podstawie pliku `.env.example`:
+
+```bash
+cd backend
+cp .env.example .env
+```
+
+2. Edytuj plik `.env` i ustaw odpowiednie wartości dla zmiennych środowiskowych.
+
+3. Aby skonfigurować logowanie przez Google OAuth, postępuj zgodnie z instrukcjami w pliku [OAUTH_SETUP.md](OAUTH_SETUP.md).
+
+### Uruchomienie:
 
 ```bash
 # Uruchamia zarówno frontend jak i backend

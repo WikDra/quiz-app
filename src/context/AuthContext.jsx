@@ -8,6 +8,24 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
   const [users, setUsers] = useState([]);
   const [error, setError] = useState(null);
+  const [tokens, setTokensState] = useState({
+    accessToken: localStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN) || null,
+    refreshToken: localStorage.getItem(STORAGE_KEYS.REFRESH_TOKEN) || null,
+  });
+
+  // Funkcja do ustawiania tokenów
+  const setTokens = useCallback(({ accessToken, refreshToken }) => {
+    setTokensState({ accessToken, refreshToken });
+    localStorage.setItem(STORAGE_KEYS.ACCESS_TOKEN, accessToken);
+    localStorage.setItem(STORAGE_KEYS.REFRESH_TOKEN, refreshToken);
+  }, []);
+
+  // Funkcja do usuwania tokenów
+  const clearTokens = useCallback(() => {
+    setTokensState({ accessToken: null, refreshToken: null });
+    localStorage.removeItem(STORAGE_KEYS.ACCESS_TOKEN);
+    localStorage.removeItem(STORAGE_KEYS.REFRESH_TOKEN);
+  }, []);
 
   // Funkcja do pobierania danych użytkowników
   const fetchUsers = useCallback(async () => {
@@ -23,15 +41,121 @@ export const AuthProvider = ({ children }) => {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, []);  // Funkcja do synchronizacji użytkownika z tokenami
+  const refreshUserState = useCallback(() => {
+    const storedUser = localStorage.getItem(STORAGE_KEYS.USER);
+    if (storedUser) {
+      try {
+        const userData = JSON.parse(storedUser);
+        
+        // Upewnij się, że dane użytkownika zawierają wszystkie wymagane pola
+        const sanitizedUser = {
+          ...userData,
+          stats: userData.stats || { 
+            quizzes: [], 
+            bestTime: '0min', 
+            correctAnswers: 0 
+          }
+        };
+        
+        // Upewnij się, że stats.quizzes istnieje i jest tablicą
+        if (!sanitizedUser.stats.quizzes) {
+          sanitizedUser.stats.quizzes = [];
+        }
+        
+        setUser(sanitizedUser);
+        
+        // Zapisz zaktualizowane dane do localStorage jeśli były zmodyfikowane
+        if (JSON.stringify(userData) !== JSON.stringify(sanitizedUser)) {
+          localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(sanitizedUser));
+          console.log('User data structure was fixed during refresh');
+        }
+        
+        return true;
+      } catch (err) {
+        console.error('Error parsing user data during refresh:', err);
+        localStorage.removeItem(STORAGE_KEYS.USER);
+      }
+    }
+    return false;
+  }, [setUser]);
+    // Helper function to update the auth state based on current tokens
+  const updateAuthStateFromTokens = useCallback(async () => {
+    const accessToken = localStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
+    if (accessToken) {
+      try {
+        // Decode the token to get user ID
+        const payload = JSON.parse(atob(accessToken.split('.')[1]));
+        if (payload && payload.sub) {
+          // Make an API call to get fresh user data
+          const response = await fetch(`${API_BASE_URL}/api/users/${payload.sub}`, {
+            headers: {
+              'Authorization': `Bearer ${accessToken}`
+            }
+          });
+          if (response.ok) {
+            const data = await response.json();
+            // Ensure user data has all required fields, especially stats with quizzes
+            const userData = {
+              ...data,
+              stats: data.stats || { 
+                quizzes: [], 
+                bestTime: '0min', 
+                correctAnswers: 0 
+              }
+            };
+            
+            if (!userData.stats.quizzes) {
+              userData.stats.quizzes = [];
+            }
+            
+            console.log('User data updated from API:', userData);
+            setUser(userData);
+            localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(userData));
+            return true;
+          }
+        }
+      } catch (err) {
+        console.error('Failed to update auth state from token:', err);
+      }
+    }
+    return false;
+  }, [API_BASE_URL]);
 
   useEffect(() => {
     // Pobierz zalogowanego użytkownika z localStorage
     const storedUser = localStorage.getItem(STORAGE_KEYS.USER);
     if (storedUser) {
       try {
-        setUser(JSON.parse(storedUser));
+        const userData = JSON.parse(storedUser);
+        
+        // Upewnij się, że dane użytkownika zawierają wszystkie wymagane pola
+        const sanitizedUser = {
+          ...userData,
+          stats: userData.stats || { 
+            quizzes: [], 
+            bestTime: '0min', 
+            correctAnswers: 0 
+          }
+        };
+        
+        // Upewnij się, że stats.quizzes istnieje i jest tablicą
+        if (!sanitizedUser.stats.quizzes) {
+          sanitizedUser.stats.quizzes = [];
+        }
+        
+        console.log('Initial user load:', sanitizedUser);
+        setUser(sanitizedUser);
+        
+        // Zapisz zaktualizowane dane do localStorage jeśli były zmodyfikowane
+        if (JSON.stringify(userData) !== JSON.stringify(sanitizedUser)) {
+          localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(sanitizedUser));
+          console.log('User data structure was fixed during initial load');
+        }
+        
+        setLoading(false);
       } catch (err) {
+        console.warn('Failed to parse user data during initial load:', err);
         console.error('Invalid user data in storage:', err);
         localStorage.removeItem(STORAGE_KEYS.USER);
       }
@@ -108,6 +232,8 @@ export const AuthProvider = ({ children }) => {
         return { success: false, error: 'Email i hasło są wymagane' };
       }
       
+      console.log("AuthContext: Wysyłanie żądania logowania do API...");
+      
       // Bezpośrednie wywołanie do API logowania
       const response = await fetch(`${API_BASE_URL}/api/login`, {
         method: 'POST',
@@ -117,7 +243,15 @@ export const AuthProvider = ({ children }) => {
         body: JSON.stringify({ email, password }),
       });
       
+      console.log("AuthContext: Otrzymano odpowiedź z API:", response.status, response.statusText);
+      
       const data = await response.json();
+      console.log("AuthContext: Dane odpowiedzi:", { 
+        success: response.ok, 
+        hasUserData: !!data.user_data,
+        hasTokens: !!(data.access_token && data.refresh_token),
+        error: data.error || null
+      });
       
       if (!response.ok) {
         return { 
@@ -126,24 +260,42 @@ export const AuthProvider = ({ children }) => {
         };
       }
       
+      // Zapisz tokeny
+      if (data.access_token && data.refresh_token) {
+        console.log("AuthContext: Zapisywanie tokenów");
+        setTokens({
+          accessToken: data.access_token,
+          refreshToken: data.refresh_token,
+        });
+      } else {
+        console.warn("AuthContext: Brak tokenów w odpowiedzi API");
+      }
+      
       // Ustawiamy zalogowanego użytkownika
-      setUser(data);
-      localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(data));
+      if (data.user_data) {
+        console.log("AuthContext: Ustawianie danych użytkownika");
+        setUser(data.user_data);
+        localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(data.user_data));
+      } else {
+        console.warn("AuthContext: Brak danych użytkownika w odpowiedzi API");
+      }
       
       return { success: true };
     } catch (error) {
+      console.error("AuthContext: Błąd podczas logowania:", error);
       return { 
         success: false, 
         error: error.message || 'Wystąpił błąd podczas logowania' 
       };
     }
-  }, []);
+  }, [setTokens]);
 
   // Wylogowanie użytkownika
   const logout = useCallback(() => {
     setUser(null);
+    clearTokens();
     localStorage.removeItem(STORAGE_KEYS.USER);
-  }, []);
+  }, [clearTokens]);
 
   // Aktualizacja danych użytkownika  // Aktualizacja awatara użytkownika
   const updateUserAvatar = useCallback(async (userId, avatarUrl) => {
@@ -241,15 +393,23 @@ export const AuthProvider = ({ children }) => {
       </div>
     );
   }
+  
   const contextValue = {
     user,
+    users,
+    loading,
+    error,
     login,
     logout,
     register,
-    updateUserAvatar,
     updateUserData,
-    error,
-    refreshUsers: fetchUsers
+    updateUserAvatar,
+    fetchUsers,
+    saveUsers,    tokens,
+    setTokens,
+    clearTokens,
+    refreshUserState,
+    updateAuthStateFromTokens,
   };
 
   return (

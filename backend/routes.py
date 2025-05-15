@@ -3,15 +3,18 @@ Definicje tras API dla Quiz App
 """
 import sys
 import os
-from flask import jsonify, request
+from flask import jsonify, request, redirect
+from flask_jwt_extended import create_access_token, create_refresh_token
 from pathlib import Path
 
 # Dodaj ścieżkę projektu
-module_path = os.path.dirname(os.path.abspath(__file__))
+module_path = os.path.abspath(os.path.dirname(__file__))
 if module_path not in sys.path:
-    sys.path.append(module_path)
+    sys.path.insert(0, module_path)
 
 from controllers import QuizController, UserController
+from controllers.oauth_controller import OAuthController
+from models.user import User
 
 def register_routes(app):
     """Rejestruje trasy API w aplikacji Flask"""
@@ -23,8 +26,7 @@ def register_routes(app):
         handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
         app.logger.addHandler(handler)
         app.logger.setLevel(logging.INFO)
-    
-    # Endpoint do sprawdzania stanu aplikacji
+      # Endpoint do sprawdzania stanu aplikacji
     @app.route('/api/health')
     def health_check():
         """Endpoint do sprawdzania stanu aplikacji"""
@@ -38,7 +40,17 @@ def register_routes(app):
         if error:
             return jsonify({'error': error}), 500
         return jsonify({"users": users})
-    
+        
+    @app.route('/api/users/<int:user_id>', methods=['GET'])
+    def get_user_by_id(user_id):
+        """Zwraca dane pojedynczego użytkownika po ID"""
+        app.logger.info(f"Pobieranie danych użytkownika o ID: {user_id}")
+        user = User.query.get(user_id)
+        if not user:
+            app.logger.warning(f"Użytkownik o ID {user_id} nie został znaleziony")
+            return jsonify({'error': 'User not found'}), 404
+        return jsonify(user.to_dict()), 200
+        
     @app.route('/api/users', methods=['PUT'])
     def update_users():
         """Aktualizuje listę użytkowników"""
@@ -50,7 +62,7 @@ def register_routes(app):
         if error:
             return jsonify({'error': error}), 500
         return jsonify(result)
-    
+        
     @app.route('/api/users/<int:user_id>/avatar', methods=['PUT'])
     def update_user_avatar(user_id):
         """Aktualizuje awatar użytkownika"""
@@ -62,7 +74,7 @@ def register_routes(app):
         if error:
             return jsonify({'error': error}), 500
         return jsonify(result)
-    
+        
     @app.route('/api/register', methods=['POST'])
     def register():
         """Endpoint do rejestracji nowych użytkowników"""
@@ -73,19 +85,37 @@ def register_routes(app):
         user, error = UserController.register_user(data)
         if error:
             return jsonify({'error': error}), 409 if "already exists" in error else 400
+        # Jeśli user to obiekt User, zamień na dict
+        if hasattr(user, 'to_dict'):
+            return jsonify(user.to_dict()), 201
         return jsonify(user), 201
-    
+        
     @app.route('/api/login', methods=['POST'])
     def login():
         """Endpoint do logowania użytkowników"""
+        app.logger.info("Otrzymano żądanie logowania w routes.py")
         data = request.get_json()
         if not data:
+            app.logger.warning("Brak danych w żądaniu logowania")
             return jsonify({'error': 'No data provided'}), 400
         
         user, error = UserController.login_user(data.get('email'), data.get('password'))
         if error:
-            return jsonify({'error': error}), 401 if "Invalid email or password" in error else 400
-        return jsonify(user)
+            status_code = 401 if "Invalid email or password" in error else 400
+            app.logger.warning(f"Nieudane logowanie: {error}, kod: {status_code}")
+            return jsonify({'error': error}), status_code
+            
+        try:
+            # Create JWT tokens
+            app.logger.info(f"Tworzenie tokenów JWT dla użytkownika {user.id}")
+            access_token = create_access_token(identity=user.id)
+            refresh_token = create_refresh_token(identity=user.id)
+            
+            app.logger.info(f"Logowanie zakończone sukcesem dla użytkownika: {user.email}")
+            return jsonify(user_data=user.to_dict(), access_token=access_token, refresh_token=refresh_token), 200
+        except Exception as e:
+            app.logger.error(f"Błąd podczas tworzenia tokenów JWT: {str(e)}")
+            return jsonify({'error': 'Internal server error during authentication'}), 500
 
     @app.route('/api/users/<int:user_id>', methods=['PUT'])
     def update_user_data_route(user_id):
@@ -184,7 +214,6 @@ def register_routes(app):
             return jsonify({'error': 'No data provided'}), 400
         
         quiz, error = QuizController.create_quiz(data)
-        
         if error:
             return jsonify({'error': error}), 400
         
@@ -199,7 +228,6 @@ def register_routes(app):
             return jsonify({'error': 'No data provided'}), 400
         
         quiz, error = QuizController.update_quiz(quiz_id, data)
-        
         if error:
             return jsonify({'error': error}), 404 if error == "Quiz not found" else 400
         
@@ -212,5 +240,42 @@ def register_routes(app):
         
         if error:
             return jsonify({'error': error}), 404 if error == "Quiz not found" else 400
-        
         return jsonify({'message': 'Quiz deleted successfully'})
+    
+    # Endpointy OAuth dla Google
+    @app.route('/api/login/google')
+    def login_with_google():
+        """Inicjuje proces logowania przez Google"""
+        return OAuthController.login_with_google()
+        
+    @app.route('/api/authorize/google')
+    def authorize_google():
+        """Obsługuje callback po autoryzacji Google"""
+        frontend_url = os.environ.get('FRONTEND_URL', 'http://localhost:5173')
+        try:
+            result = OAuthController.handle_google_callback()
+            if result is None:
+                app.logger.error("OAuth callback returned None instead of (user, error)")
+                return redirect(f"{frontend_url}/login?error=Internal+server+error")
+                
+            user, error_message = result
+            app.logger.info(f"Google callback result: User: {user is not None}, Error: {error_message}")
+        
+            if error_message:
+                # Przekieruj do frontendu z błędem
+                error_query = f"?error={error_message}"
+                app.logger.error(f"Redirecting to frontend with error: {error_message}")
+                return redirect(f"{frontend_url}/login{error_query}")
+        
+            # Utwórz tokeny JWT tak jak przy zwykłym logowaniu
+            access_token = create_access_token(identity=user.id)
+            refresh_token = create_refresh_token(identity=user.id)
+            app.logger.info(f"Created tokens for OAuth user {user.email}")
+        
+            # Przekieruj do frontendu z tokenem w parametrach URL
+            token_query = f"?access_token={access_token}&refresh_token={refresh_token}"
+            app.logger.info(f"Redirecting to frontend with tokens to: {frontend_url}/oauth-callback{token_query}")
+            return redirect(f"{frontend_url}/oauth-callback{token_query}")
+        except Exception as e:
+            app.logger.exception(f"Error in Google OAuth callback handling: {str(e)}")
+            return redirect(f"{frontend_url}/login?error=Internal+OAuth+Error")

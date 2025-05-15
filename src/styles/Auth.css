@@ -1,3 +1,54 @@
+/* Dodajemy style dla logowania przez media społecznościowe */
+.social-login {
+  margin-top: 20px;
+  text-align: center;
+}
+
+.social-login p {
+  margin-bottom: 15px;
+  color: #666;
+  font-size: 14px;
+  position: relative;
+}
+
+.social-login p:before,
+.social-login p:after {
+  content: "";
+  display: inline-block;
+  height: 1px;
+  width: 25%;
+  background: #ddd;
+  margin: 0 10px;
+  vertical-align: middle;
+}
+
+.google-login-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: #fff;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  padding: 12px 15px;
+  width: 100%;
+  font-size: 14px;
+  color: #444;
+  text-decoration: none;
+  margin: 10px 0;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  transition: all 0.2s ease;
+  cursor: pointer;
+}
+
+.google-login-button:hover {
+  box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+  background-color: #f8f8f8;
+}
+
+.google-login-button svg {
+  margin-right: 10px;
+}
+
 .auth-container {
   min-height: 100vh;
   display: flex;
@@ -227,6 +278,57 @@
 .auth-footer a:hover {
   text-decoration: underline;
   color: var(--accent-tertiary);
+}
+
+/* Dodajemy style dla logowania przez media społecznościowe */
+.social-login {
+  margin-top: 20px;
+  text-align: center;
+}
+
+.social-login p {
+  margin-bottom: 15px;
+  color: #666;
+  font-size: 14px;
+  position: relative;
+}
+
+.social-login p:before,
+.social-login p:after {
+  content: "";
+  display: inline-block;
+  height: 1px;
+  width: 25%;
+  background: #ddd;
+  margin: 0 10px;
+  vertical-align: middle;
+}
+
+.google-login-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: #fff;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  padding: 12px 15px;
+  width: 100%;
+  font-size: 14px;
+  color: #444;
+  text-decoration: none;
+  margin: 10px 0;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  transition: all 0.2s ease;
+  cursor: pointer;
+}
+
+.google-login-button:hover {
+  box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+  background-color: #f8f8f8;
+}
+
+.google-login-button svg {
+  margin-right: 10px;
 }
 
 /* Responsive design */

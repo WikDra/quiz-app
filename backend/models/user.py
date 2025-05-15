@@ -51,7 +51,6 @@ class User(db.Model):
         
         # Generuj URL Gravatar
         return f"https://www.gravatar.com/avatar/{email_hash}?d=identicon&s=200"
-    
     def to_dict(self):
         """Konwertuje obiekt User na słownik (dla API)"""
         return {
@@ -62,7 +61,7 @@ class User(db.Model):
             'level': 'Początkujący',  # Domyślna wartość
             'avatar': self.avatar_url or self.get_default_avatar(),  # Użyj własnego URL lub domyślnego awatara
             'stats': {
-                'quizzes': 0,
+                'quizzes': [],  # Pusta lista zamiast liczby 0, aby uniknąć błędów
                 'bestTime': '0min',
                 'correctAnswers': 0
             }

@@ -3,15 +3,17 @@ Główny plik aplikacji Flask z obsługą API dla quizów.
 Zawiera również definicje modeli i konfigurację bazy danych.
 """
 import os
-import json
 from datetime import timedelta # Added for token expiration
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, redirect
 from flask_migrate import Migrate
 from flask_cors import CORS
-import hashlib  # Dodaję import biblioteki do hashowania haseł
 from flask_jwt_extended import create_access_token, create_refresh_token, jwt_required, JWTManager, get_jwt_identity # Added JWT imports
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address 
+
+# Import zmiennych środowiskowych
+from dotenv import load_dotenv
+load_dotenv()  # Ładowanie zmiennych z pliku .env, jeśli istnieje
 
 # Import db instance from backend package
 from . import db
@@ -21,6 +23,7 @@ from .models.quiz import Quiz
 # Import controllers
 from .controllers.quiz_controller import QuizController
 from .controllers.user_controller import UserController # Added UserController import
+from .controllers.oauth_controller import OAuthController, init_oauth # Added OAuth controller import
 
 # Konfiguracja aplikacji
 app = Flask(__name__)
@@ -55,7 +58,10 @@ migrate = Migrate(app, db) # Initialize Migrate with the imported db
 frontend_url = os.environ.get('FRONTEND_URL', 'http://localhost:5173') # Default to common Vite dev port
 CORS(app, resources={r"/api/*": {"origins": frontend_url}}) # Restrict to frontend URL
 
-jwt = JWTManager(app) # Initialize JWTManager
+# JWTManager jest już zainicjalizowany w __init__.py
+
+# Initialize OAuth
+init_oauth(app)
 
 # API Endpoints
 @app.route('/api/health')
@@ -154,53 +160,7 @@ def update_users():
         app.logger.error(f"Error updating users: {str(e)}")
         return jsonify({'error': f'Failed to update users: {str(e)}'}), 500
 
-# Dodaję endpoint do rejestracji użytkowników
-@app.route('/api/register', methods=['POST'])
-def register():
-    """Endpoint do rejestracji nowych użytkowników"""
-    data = request.get_json()
-    if not data:
-        return jsonify({'error': 'No data provided'}), 400
-
-    # Sprawdź wymagane pola - UserController can handle this
-    # required_fields = ['fullName', 'email', 'password']
-    # for field in required_fields:
-    #     if field not in data or not data[field].strip():
-    #         return jsonify({'error': f'Field {field} is required'}), 400
-
-    user, error_message, status_code = UserController.register_user(data)
-
-    if error_message:
-        return jsonify({'error': error_message}), status_code
-    
-    return jsonify(user.to_dict()), 201
-
-
-# Dodaję endpoint do logowania
-@app.route('/api/login', methods=['POST'])
-@limiter.limit("5 per 15 minute") # Apply specific rate limit to the login route
-def login():
-    """Endpoint do logowania użytkowników"""
-    data = request.get_json()
-    if not data:
-        return jsonify({'error': 'No data provided'}), 400
-
-    email = data.get('email')
-    password = data.get('password')
-
-    if not email or not password:
-        return jsonify({'error': 'Email and password are required'}), 400
-
-    user, error_message, status_code = UserController.login_user(email, password)
-
-    if error_message:
-        return jsonify({'error': error_message}), status_code
-    
-    # Create tokens
-    access_token = create_access_token(identity=user.id)
-    refresh_token = create_refresh_token(identity=user.id)
-    
-    return jsonify(user_data=user.to_dict(), access_token=access_token, refresh_token=refresh_token), 200
+# Wszystkie endpointy są teraz w routes.py
 
 @app.route('/api/users/me/profile', methods=['PUT'])
 @jwt_required()
