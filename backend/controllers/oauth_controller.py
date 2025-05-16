@@ -131,6 +131,7 @@ class OAuthController:
                 db.session.add(user)
                 db.session.commit()
                 current_app.logger.info(f"Created new user via Google OAuth: {email}")
+                return user, None
             else:
                 # Aktualizuj informacje o istniejącym użytkowniku
                 update_needed = False
