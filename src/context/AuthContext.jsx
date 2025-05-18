@@ -8,29 +8,12 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
   const [users, setUsers] = useState([]);
   const [error, setError] = useState(null);
-  const [tokens, setTokensState] = useState({
-    accessToken: localStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN) || null,
-    refreshToken: localStorage.getItem(STORAGE_KEYS.REFRESH_TOKEN) || null,
-  });
-
-  // Funkcja do ustawiania tokenów
-  const setTokens = useCallback(({ accessToken, refreshToken }) => {
-    setTokensState({ accessToken, refreshToken });
-    localStorage.setItem(STORAGE_KEYS.ACCESS_TOKEN, accessToken);
-    localStorage.setItem(STORAGE_KEYS.REFRESH_TOKEN, refreshToken);
-  }, []);
-
-  // Funkcja do usuwania tokenów
-  const clearTokens = useCallback(() => {
-    setTokensState({ accessToken: null, refreshToken: null });
-    localStorage.removeItem(STORAGE_KEYS.ACCESS_TOKEN);
-    localStorage.removeItem(STORAGE_KEYS.REFRESH_TOKEN);
-  }, []);
-
   // Funkcja do pobierania danych użytkowników
   const fetchUsers = useCallback(async () => {
     try {
-      const response = await fetch(API_ENDPOINTS.USERS);
+      const response = await fetch(API_ENDPOINTS.USERS, {
+        credentials: 'include' // Include cookies with request
+      });
       if (!response.ok) throw new Error('Failed to load users');
       const data = await response.json();
       setUsers(data.users || []);
@@ -41,7 +24,7 @@ export const AuthProvider = ({ children }) => {
     } finally {
       setLoading(false);
     }
-  }, []);  // Funkcja do synchronizacji użytkownika z tokenami
+  }, []);// Funkcja do synchronizacji użytkownika z tokenami
   const refreshUserState = useCallback(() => {
     const storedUser = localStorage.getItem(STORAGE_KEYS.USER);
     if (storedUser) {
@@ -79,45 +62,40 @@ export const AuthProvider = ({ children }) => {
     }
     return false;
   }, [setUser]);
-    // Helper function to update the auth state based on current tokens
+    // Helper function to update the auth state based on current tokens (now cookies)
   const updateAuthStateFromTokens = useCallback(async () => {
-    const accessToken = localStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
-    if (accessToken) {
-      try {
-        // Decode the token to get user ID
-        const payload = JSON.parse(atob(accessToken.split('.')[1]));
-        if (payload && payload.sub) {
-          // Make an API call to get fresh user data
-          const response = await fetch(`${API_BASE_URL}/api/users/${payload.sub}`, {
-            headers: {
-              'Authorization': `Bearer ${accessToken}`
-            }
-          });
-          if (response.ok) {
-            const data = await response.json();
-            // Ensure user data has all required fields, especially stats with quizzes
-            const userData = {
-              ...data,
-              stats: data.stats || { 
-                quizzes: [], 
-                bestTime: '0min', 
-                correctAnswers: 0 
-              }
-            };
-            
-            if (!userData.stats.quizzes) {
-              userData.stats.quizzes = [];
-            }
-            
-            console.log('User data updated from API:', userData);
-            setUser(userData);
-            localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(userData));
-            return true;
+    try {
+      // Make an API call to get fresh user data - now uses cookies
+      const response = await fetch(`${API_BASE_URL}/api/users/me/profile`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include' // Include cookies with request
+      });
+      if (response.ok) {
+        const data = await response.json();
+        // Ensure user data has all required fields, especially stats with quizzes
+        const userData = {
+          ...data,
+          stats: data.stats || {
+            quizzes: [],
+            bestTime: '0min',
+            correctAnswers: 0
           }
+        };
+
+        if (!userData.stats.quizzes) {
+          userData.stats.quizzes = [];
         }
-      } catch (err) {
-        console.error('Failed to update auth state from token:', err);
+
+        console.log('User data updated from API:', userData);
+        setUser(userData);
+        localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(userData));
+        return true;
       }
+    } catch (err) {
+      console.error('Failed to update auth state from token:', err);
     }
     return false;
   }, [API_BASE_URL]);
@@ -164,7 +142,6 @@ export const AuthProvider = ({ children }) => {
     // Pobierz dane użytkowników z API
     fetchUsers();
   }, [fetchUsers]);
-
   // Zapisywanie użytkowników
   const saveUsers = useCallback(async (updatedUsers) => {
     try {
@@ -173,6 +150,7 @@ export const AuthProvider = ({ children }) => {
         headers: {
           'Content-Type': 'application/json',
         },
+        credentials: 'include', // Include cookies with request
         body: JSON.stringify({ users: updatedUsers }),
       });
       if (!response.ok) throw new Error('Failed to save users');
@@ -183,7 +161,6 @@ export const AuthProvider = ({ children }) => {
       return false;
     }
   }, []);
-
   // Rejestracja użytkownika - zaktualizowana funkcja, aby korzystała z nowego API
   const register = useCallback(async (fullName, email, password) => {
     try {
@@ -197,6 +174,7 @@ export const AuthProvider = ({ children }) => {
         headers: {
           'Content-Type': 'application/json',
         },
+        credentials: 'include', // Include cookies with request
         body: JSON.stringify({ fullName, email, password }),
       });
       
@@ -224,8 +202,7 @@ export const AuthProvider = ({ children }) => {
       };
     }
   }, [fetchUsers]);
-  
-  // Zaktualizowana funkcja logowania
+    // Zaktualizowana funkcja logowania
   const login = useCallback(async (email, password) => {
     try {
       if (!email?.trim() || !password?.trim()) {
@@ -240,6 +217,7 @@ export const AuthProvider = ({ children }) => {
         headers: {
           'Content-Type': 'application/json',
         },
+        credentials: 'include', // Include cookies in request
         body: JSON.stringify({ email, password }),
       });
       
@@ -249,7 +227,6 @@ export const AuthProvider = ({ children }) => {
       console.log("AuthContext: Dane odpowiedzi:", { 
         success: response.ok, 
         hasUserData: !!data.user_data,
-        hasTokens: !!(data.access_token && data.refresh_token),
         error: data.error || null
       });
       
@@ -258,17 +235,6 @@ export const AuthProvider = ({ children }) => {
           success: false, 
           error: data.error || 'Nieprawidłowy email lub hasło' 
         };
-      }
-      
-      // Zapisz tokeny
-      if (data.access_token && data.refresh_token) {
-        console.log("AuthContext: Zapisywanie tokenów");
-        setTokens({
-          accessToken: data.access_token,
-          refreshToken: data.refresh_token,
-        });
-      } else {
-        console.warn("AuthContext: Brak tokenów w odpowiedzi API");
       }
       
       // Ustawiamy zalogowanego użytkownika
@@ -288,16 +254,27 @@ export const AuthProvider = ({ children }) => {
         error: error.message || 'Wystąpił błąd podczas logowania' 
       };
     }
-  }, [setTokens]);
-
+  }, []);
   // Wylogowanie użytkownika
-  const logout = useCallback(() => {
+  const logout = useCallback(async () => {
+    try {
+      // Call the API to clear cookies
+      await fetch(`${API_BASE_URL}/api/logout`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+        }
+      });
+    } catch (error) {
+      console.error("Error during logout:", error);
+    }
+    // Clear local state regardless of API success
     setUser(null);
-    clearTokens();
     localStorage.removeItem(STORAGE_KEYS.USER);
-  }, [clearTokens]);
+  }, [API_BASE_URL]);
 
-  // Aktualizacja danych użytkownika  // Aktualizacja awatara użytkownika
+  // Aktualizacja awatara użytkownika
   const updateUserAvatar = useCallback(async (userId, avatarUrl) => {
     try {
       const response = await fetch(`${API_BASE_URL}/api/users/${userId}/avatar`, {
@@ -305,6 +282,7 @@ export const AuthProvider = ({ children }) => {
         headers: {
           'Content-Type': 'application/json',
         },
+        credentials: 'include', // Include cookies with request
         body: JSON.stringify({ avatar_url: avatarUrl }),
       });
       
@@ -362,6 +340,7 @@ export const AuthProvider = ({ children }) => {
         password: userData.password || updatedUsers[userIndex].password
       };
       
+      // Use saveUsers which already includes credentials
       const saved = await saveUsers(updatedUsers);
       
       if (!saved) {
@@ -393,8 +372,7 @@ export const AuthProvider = ({ children }) => {
       </div>
     );
   }
-  
-  const contextValue = {
+    const contextValue = {
     user,
     users,
     loading,
@@ -405,9 +383,7 @@ export const AuthProvider = ({ children }) => {
     updateUserData,
     updateUserAvatar,
     fetchUsers,
-    saveUsers,    tokens,
-    setTokens,
-    clearTokens,
+    saveUsers,
     refreshUserState,
     updateAuthStateFromTokens,
   };

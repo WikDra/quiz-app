@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { STORAGE_KEYS } from '../utils/constants';
+import { STORAGE_KEYS, API_BASE_URL } from '../utils/constants';
 
 /**
  * Component for debugging authentication state
@@ -8,12 +8,44 @@ import { STORAGE_KEYS } from '../utils/constants';
  */
 const DebugAuthState = () => {
   const [isVisible, setIsVisible] = useState(false);
-  const { user, tokens } = useAuth();
+  const [cookieState, setCookieState] = useState({ 
+    hasCookies: false, 
+    accessCookie: false, 
+    refreshCookie: false 
+  });
+  const { user } = useAuth();
   
-  // Get localStorage values
+  // Get localStorage values (still used for user data)
   const storedUser = localStorage.getItem(STORAGE_KEYS.USER);
-  const accessToken = localStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
-  const refreshToken = localStorage.getItem(STORAGE_KEYS.REFRESH_TOKEN);
+  
+  // Check for cookies (indirectly by testing a profile fetch)
+  useEffect(() => {
+    const checkAuthCookies = async () => {
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/users/me/profile`, {
+          method: 'GET',
+          credentials: 'include'
+        });
+        
+        setCookieState({
+          hasCookies: response.ok,
+          accessCookie: response.ok, // If the request worked, access token cookie exists
+          refreshCookie: response.ok // We can't directly check refresh cookies, but assume it's there too
+        });
+      } catch (error) {
+        console.error('Cookie check failed:', error);
+        setCookieState({ 
+          hasCookies: false, 
+          accessCookie: false, 
+          refreshCookie: false 
+        });
+      }
+    };
+    
+    if (isVisible) {
+      checkAuthCookies();
+    }
+  }, [isVisible]);
   
   if (import.meta.env.DEV !== true) {
     return null; // Only show in development
@@ -50,23 +82,32 @@ const DebugAuthState = () => {
       </button>
       
       {isVisible && (
-        <div>
-          <h4>Auth Context State:</h4>
+        <div>          <h4>Auth Context State:</h4>
           <div>User: {user ? `ID: ${user.id}` : 'Not logged in'}</div>
-          <div>Access Token: {tokens?.accessToken ? 'Present' : 'Not present'}</div>
-          <div>Refresh Token: {tokens?.refreshToken ? 'Present' : 'Not present'}</div>
+          
+          <h4>HTTP-Only Cookies:</h4>
+          <div>Auth Cookies: {cookieState.hasCookies ? 'Present' : 'Not present'}</div>
+          <div>Access Token Cookie: {cookieState.accessCookie ? 'Valid' : 'Missing/Invalid'}</div>
+          <div>Refresh Token Cookie: {cookieState.refreshCookie ? 'Likely present' : 'Likely missing'}</div>
           
           <h4>localStorage Values:</h4>
           <div>User: {storedUser ? `Present (${storedUser.substring(0, 20)}...)` : 'Not present'}</div>
-          <div>Access Token: {accessToken ? `Present (${accessToken.substring(0, 20)}...)` : 'Not present'}</div>
-          <div>Refresh Token: {refreshToken ? 'Present' : 'Not present'}</div>
           
           <div style={{ marginTop: '10px' }}>
             <button 
-              onClick={() => {
+              onClick={async () => {
+                try {
+                  // Call the logout API endpoint to clear cookies
+                  await fetch(`${API_BASE_URL}/api/logout`, {
+                    method: 'POST',
+                    credentials: 'include'
+                  });
+                } catch (error) {
+                  console.error('Error during debug logout:', error);
+                }
+                
+                // Also clear localStorage
                 localStorage.removeItem(STORAGE_KEYS.USER);
-                localStorage.removeItem(STORAGE_KEYS.ACCESS_TOKEN);
-                localStorage.removeItem(STORAGE_KEYS.REFRESH_TOKEN);
                 window.location.reload();
               }}
               style={{

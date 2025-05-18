@@ -103,13 +103,13 @@ const UserSettings = () => {
     
     setIsLoading(true);
     
-    try {
-      // Używamy osobnego zapytania API do zmiany hasła zamiast standardowego updateUserData
+    try {      // Używamy osobnego zapytania API do zmiany hasła zamiast standardowego updateUserData
       const response = await fetch(`${API_BASE_URL}/api/users/${user.id}/change-password`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
         },
+        credentials: 'include', // Include cookies with request
         body: JSON.stringify({ 
           currentPassword, 
           newPassword 

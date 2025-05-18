@@ -34,9 +34,10 @@ export const QuizProvider = ({ children }) => {
       return;
     }
 
-    setLoading(true);
-    try {
-      const response = await fetch(API_ENDPOINTS.QUIZ);
+    setLoading(true);    try {
+      const response = await fetch(API_ENDPOINTS.QUIZ, {
+        credentials: 'include' // Include cookies with request
+      });
       const data = await handleResponse(response, 'Failed to fetch quizzes');
       setQuizzes(data.quizzes || []);
       setLastFetch(Date.now());
@@ -61,9 +62,10 @@ export const QuizProvider = ({ children }) => {
         timePerQuestion: cachedQuiz.timeLimit || DEFAULT_QUIZ_VALUES.timeLimit
       };
     }
-    
-    try {
-      const response = await fetch(API_ENDPOINTS.QUIZ_BY_ID(id));
+      try {
+      const response = await fetch(API_ENDPOINTS.QUIZ_BY_ID(id), {
+        credentials: 'include' // Include cookies with request
+      });
       const quiz = await handleResponse(response, 'Quiz not found');
       
       // Aktualizuj cache tylko jeśli quiz się zmienił
@@ -100,10 +102,10 @@ export const QuizProvider = ({ children }) => {
         createdAt: new Date().toISOString(),
         lastModified: new Date().toISOString()
       };
-      
-      const response = await fetch(API_ENDPOINTS.QUIZ, {
+        const response = await fetch(API_ENDPOINTS.QUIZ, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include', // Include cookies with request
         body: JSON.stringify(quizWithDefaults),
       });
       
@@ -127,10 +129,10 @@ export const QuizProvider = ({ children }) => {
         ...updatedQuiz,
         lastModified: new Date().toISOString()
       };
-      
-      const response = await fetch(API_ENDPOINTS.QUIZ_BY_ID(id), {
+        const response = await fetch(API_ENDPOINTS.QUIZ_BY_ID(id), {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include', // Include cookies with request
         body: JSON.stringify(quizData),
       });
       
@@ -147,9 +149,9 @@ export const QuizProvider = ({ children }) => {
   const deleteQuiz = useCallback(async (id) => {
     if (!id) throw new Error('Quiz ID is required');
     
-    try {
-      const response = await fetch(API_ENDPOINTS.QUIZ_BY_ID(id), {
+    try {      const response = await fetch(API_ENDPOINTS.QUIZ_BY_ID(id), {
         method: 'DELETE',
+        credentials: 'include', // Include cookies with request
       });
       
       await handleResponse(response, 'Failed to delete quiz');

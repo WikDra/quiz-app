@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",  "scripts": {
-    "dev": "concurrently \"cd backend && python run.py\" \"vite\"",
+    "dev": "concurrently \"cd backend_v2 && python run.py\" \"vite\"",
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview",

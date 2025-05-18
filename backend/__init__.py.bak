@@ -31,13 +31,6 @@ def create_app():
     app.config['JWT_SECRET_KEY'] = os.environ.get('JWT_SECRET_KEY', 'UNSAFE_DEV_JWT_KEY_PLEASE_RUN_SETUP_SECURITY')
     app.config["JWT_ACCESS_TOKEN_EXPIRES"] = timedelta(hours=1)
     app.config["JWT_REFRESH_TOKEN_EXPIRES"] = timedelta(days=30)
-
-    # Configure JWT cookie settings
-    app.config["JWT_TOKEN_LOCATION"] = ["cookies"]
-    app.config["JWT_COOKIE_SECURE"] = False  # Set to True in production
-    app.config["JWT_COOKIE_CSRF_PROTECT"] = False  # Set to True in production
-    app.config["JWT_COOKIE_SAMESITE"] = "None"  # Required for cross-site requests
-
       # Inicjalizacja rozszerzeń
     db.init_app(app)
     migrate.init_app(app, db)
@@ -73,30 +66,5 @@ def create_app():
         # Rejestracja tras API (zrób to w kontekście aplikacji)
         import routes
         routes.register_routes(app)
-    # Custom after_request function to fix SameSite attribute in cookies
-    @app.after_request
-    def set_cookie_attributes(response):
-        # Get all cookie headers
-        cookie_headers = response.headers.getlist('Set-Cookie')
-        new_cookie_headers = []
-        
-        # Process each cookie
-        for header in cookie_headers:
-            # Replace samesite=Lax with samesite=None
-            if 'samesite=Lax' in header:
-                header = header.replace('samesite=Lax', 'samesite=None')
-            # Add samesite=None if not present
-            elif 'samesite=' not in header:
-                header = header + '; samesite=None'
-            new_cookie_headers.append(header)
-        
-        # Clear original cookies and set the modified ones
-        response.headers.pop('Set-Cookie', None)
-        for header in new_cookie_headers:
-            response.headers.add('Set-Cookie', header)
-        
-        return response
-
-
     
     return app

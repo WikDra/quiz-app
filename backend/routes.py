@@ -3,7 +3,7 @@ Definicje tras API dla Quiz App
 """
 import sys
 import os
-from flask import jsonify, request, redirect
+from flask import jsonify, request, redirect, make_response
 from flask_jwt_extended import create_access_token, create_refresh_token, get_jwt_identity, jwt_required
 from pathlib import Path
 
@@ -99,7 +99,6 @@ def register_routes(app):
         if error:
             return jsonify({'error': error}), 500
         return jsonify(result)
-        
     @app.route('/api/register', methods=['POST'])
     def register():
         """Endpoint do rejestracji nowych użytkowników"""
@@ -111,11 +110,27 @@ def register_routes(app):
         user, error = UserController.register_user(data)
         if error:
             return jsonify({'error': error}), 409 if "already exists" in error else 400
-        # Jeśli user to obiekt User, zamień na dict
-        if hasattr(user, 'to_dict'):
-            return jsonify(user.to_dict()), 201
-        return jsonify(user), 201
-        
+            
+        try:
+            # Create JWT tokens
+            app.logger.info(f"Tworzenie tokenów JWT dla nowego użytkownika {user.id}")
+            access_token = create_access_token(identity=user.id)
+            refresh_token = create_refresh_token(identity=user.id)
+
+            # Create response            user_data = user.to_dict() if hasattr(user, 'to_dict') else user
+            resp = make_response(jsonify(user_data))
+
+            # Set access token as HTTP-only cookie
+            resp.set_cookie('access_token_cookie', access_token, httponly=True, secure=False, samesite='Lax')
+            # Set refresh token as HTTP-only cookie
+            resp.set_cookie('refresh_token_cookie', refresh_token, httponly=True, secure=False, samesite='Lax')
+            
+            return resp, 201
+        except Exception as e:
+            app.logger.error(f"Błąd podczas tworzenia tokenów JWT: {str(e)}")
+            # Return user data without tokens if there's an error
+            user_data = user.to_dict() if hasattr(user, 'to_dict') else user
+            return jsonify(user_data), 201
     @app.route('/api/login', methods=['POST'])
     def login():
         """Endpoint do logowania użytkowników"""
@@ -136,10 +151,16 @@ def register_routes(app):
             # Create JWT tokens
             app.logger.info(f"Tworzenie tokenów JWT dla użytkownika {user.id}")
             access_token = create_access_token(identity=user.id)
-            refresh_token = create_refresh_token(identity=user.id)
+            refresh_token = create_refresh_token(identity=user.id)            # Create response
+            resp = jsonify(user_data=user.to_dict())
+
+            # Set access token as HTTP-only cookie
+            resp.set_cookie('access_token_cookie', access_token, httponly=True, secure=False, samesite='Lax')
+            # Set refresh token as HTTP-only cookie
+            resp.set_cookie('refresh_token_cookie', refresh_token, httponly=True, secure=False, samesite='Lax')
             
             app.logger.info(f"Logowanie zakończone sukcesem dla użytkownika: {user.email}")
-            return jsonify(user_data=user.to_dict(), access_token=access_token, refresh_token=refresh_token), 200
+            return resp, 200
         except Exception as e:
             app.logger.error(f"Błąd podczas tworzenia tokenów JWT: {str(e)}")
             return jsonify({'error': 'Internal server error during authentication'}), 500
@@ -194,6 +215,17 @@ def register_routes(app):
                 status_code = 400
             return jsonify({'error': error}), status_code
         return jsonify(result)
+
+    @app.route('/api/users/me/profile', methods=['GET'])
+    @jwt_required()
+    def get_my_profile():
+        """Endpoint do pobierania profilu zalogowanego użytkownika."""
+        current_user_id = get_jwt_identity()
+        user = User.query.get(current_user_id)
+        if not user:
+            app.logger.warning(f"Użytkownik o ID {current_user_id} nie został znaleziony")
+            return jsonify({'error': 'User not found'}), 404
+        return jsonify(user.to_dict()), 200
 
     # Endpointy dla quizów
     @app.route('/api/quiz', methods=['GET'])
@@ -349,22 +381,25 @@ def register_routes(app):
             return jsonify({'error': error}), 404 if error == "Quiz not found" else 400
         return jsonify({'message': 'Quiz deleted successfully'})
     
-    # Dodaj endpoint do odświeżania tokenów JWT
-    @app.route('/api/token/refresh', methods=['POST'])
+    # Dodaj endpoint do odświeżania tokenów JWT    @app.route('/api/token/refresh', methods=['POST'])
     @jwt_required(refresh=True)
     def refresh_token():
         """Odświeża token dostępu przy użyciu refresh tokena"""
         current_user_id = get_jwt_identity()
         access_token = create_access_token(identity=current_user_id)
+          # Create response
+        resp = make_response(jsonify({'message': 'Token refreshed successfully'}))
+
+        # Set new access token as HTTP-only cookie
+        resp.set_cookie('access_token_cookie', access_token, httponly=True, secure=False, samesite='Lax')
         
-        return jsonify(access_token=access_token), 200
+        return resp, 200
     
     # Endpointy OAuth dla Google
     @app.route('/api/login/google')
     def login_with_google():
         """Inicjuje proces logowania przez Google"""
         return OAuthController.login_with_google()
-        
     @app.route('/api/authorize/google')
     def authorize_google():
         """Obsługuje callback po autoryzacji Google"""
@@ -387,12 +422,23 @@ def register_routes(app):
             # Utwórz tokeny JWT tak jak przy zwykłym logowaniu
             access_token = create_access_token(identity=user.id)
             refresh_token = create_refresh_token(identity=user.id)
-            app.logger.info(f"Created tokens for OAuth user {user.email}")
-        
-            # Przekieruj do frontendu z tokenem w parametrach URL
-            token_query = f"?access_token={access_token}&refresh_token={refresh_token}"
-            app.logger.info(f"Redirecting to frontend with tokens to: {frontend_url}/oauth-callback{token_query}")
-            return redirect(f"{frontend_url}/oauth-callback{token_query}")
+            app.logger.info(f"Created tokens for OAuth user {user.email}")            # Create response with redirect
+            resp = make_response(redirect(f"{frontend_url}/oauth-callback"))
+            # Set access token as HTTP-only cookie
+            resp.set_cookie('access_token_cookie', access_token, httponly=True, secure=False, samesite='None')
+            # Set refresh token as HTTP-only cookie
+            resp.set_cookie('refresh_token_cookie', refresh_token, httponly=True, secure=False, samesite='None')
+
+            # Przekieruj do frontendu
+            return resp
         except Exception as e:
             app.logger.exception(f"Error in Google OAuth callback handling: {str(e)}")
             return redirect(f"{frontend_url}/login?error=Internal+OAuth+Error")
+
+    @app.route('/api/logout', methods=['POST'])
+    def logout():
+        """Endpoint to log out the user by clearing their cookies"""
+        resp = make_response(jsonify({'message': 'Logged out successfully'}))
+        resp.delete_cookie('access_token_cookie')
+        resp.delete_cookie('refresh_token_cookie')
+        return resp, 200
