@@ -3,8 +3,17 @@ API routes definition for Quiz App
 """
 import os
 import sys
+import traceback
+from datetime import datetime
 from flask import jsonify, request, redirect, make_response
-from flask_jwt_extended import create_access_token, create_refresh_token, get_jwt_identity, jwt_required
+from flask_jwt_extended import (
+    create_access_token, 
+    create_refresh_token, 
+    get_jwt_identity, 
+    jwt_required, 
+    get_jwt,
+    verify_jwt_in_request
+)
 
 from controllers.quiz_controller import QuizController
 from controllers.user_controller import UserController
@@ -108,17 +117,38 @@ def register_routes(app):
         if error:
             return jsonify({'error': error}), 500
         return jsonify(result)
-    
     @app.route('/api/users/me/profile', methods=['GET'])
     @jwt_required()
     def get_my_profile():
         """Get profile of logged in user"""
-        current_user_id = get_jwt_identity()
-        user = User.query.get(current_user_id)
-        if not user:
-            app.logger.warning(f"User with ID {current_user_id} not found")
-            return jsonify({'error': 'User not found'}), 404
-        return jsonify(user.to_dict()), 200
+        try:
+            # Log request headers for debugging
+            app.logger.info("GET /api/users/me/profile - Headers:")
+            for header, value in request.headers.items():
+                if header.lower() != 'cookie':  # Don't log actual cookie contents for security
+                    app.logger.info(f"  {header}: {value}")
+                else:
+                    app.logger.info(f"  {header}: [COOKIE DATA PRESENT]")
+                    
+            current_user_id = get_jwt_identity()
+            app.logger.info(f"JWT identity resolved to user_id: {current_user_id}")
+            
+            user = User.query.get(current_user_id)
+            if not user:
+                app.logger.warning(f"User with ID {current_user_id} not found in database")
+                return jsonify({'error': 'User not found'}), 404
+                
+            # User found, return profile data
+            user_data = user.to_dict()
+            app.logger.info(f"Successfully retrieved profile for user {current_user_id}")
+            return jsonify(user_data), 200
+            
+        except Exception as e:
+            # Log detailed error information
+            app.logger.error(f"Error in get_my_profile: {str(e)}")
+            import traceback
+            app.logger.error(traceback.format_exc())
+            return jsonify({'error': 'Internal server error fetching profile'}), 500
     
     @app.route('/api/register', methods=['POST'])
     def register():
@@ -131,11 +161,10 @@ def register_routes(app):
         if error:
             return jsonify({'error': error}), 409 if "already exists" in error else 400
             
-        try:
-            # Create JWT tokens
+        try:            # Create JWT tokens
             app.logger.info(f"Creating JWT tokens for new user {user.id}")
-            access_token = create_access_token(identity=user.id)
-            refresh_token = create_refresh_token(identity=user.id)
+            access_token = create_access_token(identity=str(user.id))
+            refresh_token = create_refresh_token(identity=str(user.id))
 
             # Create response
             user_data = user.to_dict()
@@ -180,11 +209,10 @@ def register_routes(app):
             app.logger.warning(f"Login failed: {error}, status code: {status_code}")
             return jsonify({'error': error}), status_code
             
-        try:
-            # Create JWT tokens
+        try:            # Create JWT tokens
             app.logger.info(f"Creating JWT tokens for user {user.id}")
-            access_token = create_access_token(identity=user.id)
-            refresh_token = create_refresh_token(identity=user.id)
+            access_token = create_access_token(identity=str(user.id))
+            refresh_token = create_refresh_token(identity=str(user.id))
             
             # Create response
             resp = jsonify(user_data=user.to_dict())
@@ -214,11 +242,11 @@ def register_routes(app):
             return jsonify({'error': 'Internal server error during authentication'}), 500
     
     @app.route('/api/token/refresh', methods=['POST'])
-    @jwt_required(refresh=True)
+    @jwt_required(refresh=True)    
     def refresh_token():
         """Refresh access token using refresh token"""
         current_user_id = get_jwt_identity()
-        access_token = create_access_token(identity=current_user_id)
+        access_token = create_access_token(identity=str(current_user_id))
         
         # Create response
         resp = make_response(jsonify({'message': 'Token refreshed successfully'}))
@@ -233,7 +261,6 @@ def register_routes(app):
         )
         
         return resp, 200
-    
     @app.route('/api/logout', methods=['POST'])
     def logout():
         """Logout user by clearing cookies"""
@@ -242,12 +269,98 @@ def register_routes(app):
         resp.delete_cookie('refresh_token_cookie')
         return resp, 200
     
+    # Debug endpoints (only for development)
+    @app.route('/api/test-cookies', methods=['GET', 'OPTIONS'])
+    def test_cookies():
+        """Test endpoint to diagnose cookie issues"""
+        if request.method == 'OPTIONS':
+            response = make_response()
+            response.headers.add('Access-Control-Allow-Methods', 'GET, OPTIONS')
+            response.headers.add('Access-Control-Allow-Headers', 'Content-Type, Authorization')
+            # Let the global after_request handler set the credentials header
+            # to avoid duplicate headers
+            return response
+            response = make_response(jsonify({
+            'message': 'Testing cookie setting',
+            'timestamp': datetime.now().isoformat()
+        }))
+        
+        # Set a test cookie
+        response.set_cookie(
+            'test_cookie', 
+            'test_value', 
+            httponly=True, 
+            secure=False,  # Set to True in production with HTTPS
+            samesite='None',  # Required for cross-site requests
+            path='/'
+        )
+        
+        # Add a non-httpOnly cookie to help the frontend detect cookie functionality
+        response.set_cookie(
+            'test_visible_cookie', 
+            'frontend_visible',
+            httponly=False,
+            secure=False,
+            samesite='None',
+            path='/'
+        )
+        
+        return response
+    
+    @app.route('/api/debug/auth', methods=['GET'])
+    def debug_auth():
+        """Debug endpoint to check authentication status and cookies"""
+        if os.environ.get('FLASK_ENV') == 'production':
+            return jsonify({'error': 'Debug endpoints not available in production'}), 403
+            
+        try:
+            # Get cookie info
+            cookies = {k: '[PRESENT]' for k in request.cookies.keys()}
+            
+            # Check for JWT cookies specifically
+            jwt_access = 'access_token_cookie' in request.cookies
+            jwt_refresh = 'refresh_token_cookie' in request.cookies
+            
+            # Try to get identity if JWT is present
+            jwt_identity = None
+            jwt_error = None
+            
+            if jwt_access:
+                try:
+                    from flask_jwt_extended import verify_jwt_in_request
+                    verify_jwt_in_request(optional=True)
+                    jwt_identity = get_jwt_identity()
+                except Exception as e:
+                    jwt_error = str(e)
+            
+            # Get headers (excluding actual cookie values)
+            headers = {}
+            for name, value in request.headers.items():
+                if name.lower() != 'cookie':
+                    headers[name] = value
+                else:
+                    headers[name] = '[COOKIE VALUES HIDDEN]'
+            
+            return jsonify({
+                'cookies': cookies,
+                'jwt_access_present': jwt_access,
+                'jwt_refresh_present': jwt_refresh,
+                'jwt_identity': jwt_identity,
+                'jwt_error': jwt_error,
+                'headers': headers,
+                'cors_enabled': True,  # CORS is enabled in this application
+                'same_site_setting': app.config.get('JWT_COOKIE_SAMESITE')
+            })
+        except Exception as e:
+            app.logger.error(f"Error in debug endpoint: {str(e)}")
+            app.logger.error(traceback.format_exc())
+            return jsonify({'error': str(e)}), 500
+    
     # OAuth endpoints
     @app.route('/api/login/google')
     def login_with_google():
         """Initiate Google OAuth login process"""
         return OAuthController.login_with_google()
-    
     @app.route('/api/authorize/google')
     def authorize_google():
         """Handle callback after Google authorization"""
@@ -266,34 +379,51 @@ def register_routes(app):
                 error_query = f"?error={error_message}"
                 app.logger.error(f"Redirecting to frontend with error: {error_message}")
                 return redirect(f"{frontend_url}/login{error_query}")
-            
-            # Create JWT tokens like normal login
-            access_token = create_access_token(identity=user.id)
-            refresh_token = create_refresh_token(identity=user.id)
+              # Create JWT tokens like normal login
+            access_token = create_access_token(identity=str(user.id))
+            refresh_token = create_refresh_token(identity=str(user.id))
             app.logger.info(f"Created tokens for OAuth user {user.email}")
             
-            # Create response with redirect
-            resp = make_response(redirect(f"{frontend_url}/oauth-callback"))
+            # Create response with redirect 
+            redirect_url = f"{frontend_url}/oauth-callback"
+            resp = make_response(redirect(redirect_url))
             
-            # Set access token as HTTP-only cookie
+            # Set access token cookie with all necessary attributes directly
             resp.set_cookie(
                 'access_token_cookie', 
                 access_token, 
                 httponly=True, 
+                path='/',
                 secure=False,  # Set to True in production with HTTPS
                 samesite='None'  # Required for cross-site requests
             )
             
-            # Set refresh token as HTTP-only cookie
+            # Set refresh token cookie with all necessary attributes directly
             resp.set_cookie(
                 'refresh_token_cookie', 
                 refresh_token, 
                 httponly=True, 
+                path='/',
                 secure=False,  # Set to True in production with HTTPS
                 samesite='None'  # Required for cross-site requests
             )
-
-            # Redirect to frontend
+            
+            # Add a non-httpOnly cookie to help the frontend detect successful auth
+            resp.set_cookie(
+                'auth_success', 
+                'true', 
+                httponly=False, 
+                path='/',
+                secure=False,
+                samesite='None'
+            )
+            
+            # Log cookies being set
+            app.logger.info(f"Setting cookies for user {user.id}. Redirecting to: {redirect_url}")
+            
+            # Ensure CORS headers are set
+            resp.headers.add('Access-Control-Allow-Credentials', 'true')
+            
             return resp
         except Exception as e:
             app.logger.exception(f"Error in Google OAuth callback handling: {str(e)}")

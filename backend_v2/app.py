@@ -54,9 +54,23 @@ def create_app():
     db.init_app(app)
     migrate = Migrate(app, db)
     jwt = JWTManager(app)
-    bcrypt = Bcrypt(app)
+      # JWT error handlers
+    @jwt.expired_token_loader
+    def expired_token_callback(jwt_header, jwt_payload):
+        app.logger.warning(f"Expired token used: {jwt_payload}")
+        return jsonify({"error": "Token has expired"}), 401
+    @jwt.invalid_token_loader
+    def invalid_token_callback(error_string):
+        app.logger.warning(f"Invalid token or decode error: {error_string}")
+        return jsonify({"error": "Invalid token format or signature"}), 401
     
-    # Configure CORS
+    @jwt.unauthorized_loader
+    def unauthorized_callback(error_string):
+        app.logger.warning(f"Missing token: {error_string}")
+        return jsonify({"error": "Missing or invalid authorization token"}), 401
+        
+    bcrypt = Bcrypt(app)
+      # Configure CORS
     frontend_url = os.environ.get('FRONTEND_URL', 'http://localhost:5173')
     CORS(
         app,
@@ -66,32 +80,65 @@ def create_app():
         expose_headers=["Set-Cookie"], 
         methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"]
     )
-    
-    # Initialize OAuth
+      # Initialize OAuth
     init_oauth(app)
-    
-    # Custom after_request function to ensure cookies work correctly
+      # Custom after_request function to ensure cookies work correctly
     @app.after_request
     def set_cookie_attributes(response):
         """Ensure cookies have proper attributes for cross-site requests"""
         # Get all cookie headers
         cookie_headers = response.headers.getlist('Set-Cookie')
+        if not cookie_headers:
+            return response
+            
         new_cookie_headers = []
         
         # Process each cookie
         for header in cookie_headers:
-            # Replace samesite=Lax with samesite=None
-            if 'samesite=Lax' in header:
-                header = header.replace('samesite=Lax', 'samesite=None')
-            # Add samesite=None if not present
-            elif 'samesite=' not in header:
-                header = header + '; samesite=None'
-            new_cookie_headers.append(header)
-        
-        # Clear original cookies and set the modified ones
+            # Add necessary security attributes for cross-site requests
+            if 'access_token_cookie' in header or 'refresh_token_cookie' in header:
+                # Parse the cookie into parts
+                parts = header.split(';')
+                base = parts[0]  # The name=value part
+                attributes = {
+                    'Path': '/',
+                    'SameSite': 'None',  # Required for cross-site requests
+                    'HttpOnly': True,    # Security: no JS access to cookie
+                    'Secure': False      # Set to True in production with HTTPS
+                }
+                
+                # Keep any existing attributes that we're not explicitly setting
+                for part in parts[1:]:
+                    if '=' in part:
+                        key, value = part.strip().split('=', 1)
+                        if key.lower() not in [k.lower() for k in attributes.keys()]:
+                            attributes[key] = value
+                
+                # Rebuild the cookie with our required attributes
+                new_header = base
+                for key, value in attributes.items():
+                    if value is True:
+                        new_header += f'; {key}'
+                    else:
+                        new_header += f'; {key}={value}'
+                
+                new_cookie_headers.append(new_header)
+            else:
+                # For non-JWT cookies, just pass them through
+                new_cookie_headers.append(header)
+          # Clear original cookies and set the modified ones
         response.headers.pop('Set-Cookie', None)
         for header in new_cookie_headers:
             response.headers.add('Set-Cookie', header)
+            
+        # Fix CORS headers - completely remove and reset credentials header
+        response.headers.pop('Access-Control-Allow-Credentials', None)
+        response.headers.add('Access-Control-Allow-Credentials', 'true')
+        
+        # Debug logging for CORS headers
+        if app.debug:
+            cors_headers = {k: v for k, v in response.headers.items() if k.startswith('Access-Control')}
+            app.logger.debug(f"CORS headers after modification: {cors_headers}")
         
         return response
     

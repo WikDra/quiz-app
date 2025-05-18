@@ -8,6 +8,46 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
   const [users, setUsers] = useState([]);
   const [error, setError] = useState(null);
+  
+  // Cookie helper to patch document.cookie API for cross-site compatibility
+  const patchCookieApi = useCallback(() => {
+    if (typeof document === 'undefined') return; // Skip if not in browser environment
+    
+    console.log("Patching document.cookie API for cross-site compatibility");
+    
+    try {
+      // Save the original setters and getters
+      const originalCookieGetter = Object.getOwnPropertyDescriptor(Document.prototype, 'cookie').get;
+      const originalCookieSetter = Object.getOwnPropertyDescriptor(Document.prototype, 'cookie').set;
+      
+      // Replace the setter
+      Object.defineProperty(document, 'cookie', {
+        get: function() {
+          return originalCookieGetter.call(document);
+        },
+        set: function(val) {
+          console.log("Setting cookie with cross-site compatibility:", val);
+          
+          // Fix SameSite attribute if needed
+          if (val.indexOf('SameSite=') === -1 && val.indexOf('samesite=') === -1) {
+            val += '; SameSite=None';
+          }
+          
+          // Call the original setter
+          return originalCookieSetter.call(document, val);
+        },
+        configurable: true
+      });
+    } catch (err) {
+      console.error("Error patching cookie API:", err);
+    }
+  }, []);
+
+  // Apply cookie patch on initialization
+  useEffect(() => {
+    patchCookieApi();
+  }, [patchCookieApi]);
+
   // Funkcja do pobierania danych użytkowników
   const fetchUsers = useCallback(async () => {
     try {

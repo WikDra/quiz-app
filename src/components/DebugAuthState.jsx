@@ -13,6 +13,8 @@ const DebugAuthState = () => {
     accessCookie: false, 
     refreshCookie: false 
   });
+  const [authCookieExists, setAuthCookieExists] = useState(false);
+  const [cookieCount, setCookieCount] = useState(0);
   const { user } = useAuth();
   
   // Get localStorage values (still used for user data)
@@ -46,6 +48,36 @@ const DebugAuthState = () => {
       checkAuthCookies();
     }
   }, [isVisible]);
+  
+  // Check cookie state periodically
+  useEffect(() => {
+    const updateCookieInfo = () => {
+      const cookies = document.cookie;
+      const hasAuthCookie = cookies.includes('auth_success');
+      const count = cookies.split(';').filter(c => c.trim().length > 0).length;
+      
+      setAuthCookieExists(hasAuthCookie);
+      setCookieCount(count);
+      
+      // Log auth state info for debugging
+      if (user && !cookieState.hasCookies) {
+        console.warn('[AuthStateLogger] User present but no auth cookies - possible sync issue');
+      }
+    };
+    
+    updateCookieInfo();
+    const timer = setInterval(updateCookieInfo, 5000);
+    return () => clearInterval(timer);
+  }, [user, cookieState]);
+  
+  // This effect logs auth state changes to help with debugging
+  useEffect(() => {
+    console.log('[AuthStateLogger] Auth state changed:', {
+      isLoggedIn: !!user,
+      userId: user?.id || null,
+      hasCookies: cookieState.hasCookies
+    });
+  }, [user, cookieState]);
   
   if (import.meta.env.DEV !== true) {
     return null; // Only show in development
@@ -86,15 +118,16 @@ const DebugAuthState = () => {
           <div>User: {user ? `ID: ${user.id}` : 'Not logged in'}</div>
           
           <h4>HTTP-Only Cookies:</h4>
-          <div>Auth Cookies: {cookieState.hasCookies ? 'Present' : 'Not present'}</div>
-          <div>Access Token Cookie: {cookieState.accessCookie ? 'Valid' : 'Missing/Invalid'}</div>
-          <div>Refresh Token Cookie: {cookieState.refreshCookie ? 'Likely present' : 'Likely missing'}</div>
+          <div>Auth Cookies: {cookieState.hasCookies ? 'Present ✅' : 'Not present ❌'}</div>
+          <div>Access Token Cookie: {cookieState.accessCookie ? 'Valid ✅' : 'Missing/Invalid ❌'}</div>
+          <div>Refresh Token Cookie: {cookieState.refreshCookie ? 'Likely present ✅' : 'Likely missing ❌'}</div>
+          <div>Auth Success Cookie: {authCookieExists ? 'Present ✅' : 'Missing ❌'}</div>
+          <div>Total Cookies: {cookieCount}</div>
           
           <h4>localStorage Values:</h4>
-          <div>User: {storedUser ? `Present (${storedUser.substring(0, 20)}...)` : 'Not present'}</div>
+          <div>User: {storedUser ? `Present ✅ (${storedUser.substring(0, 20)}...)` : 'Not present ❌'}</div>
           
-          <div style={{ marginTop: '10px' }}>
-            <button 
+          <div style={{ marginTop: '10px', display: 'flex', gap: '10px' }}>            <button 
               onClick={async () => {
                 try {
                   // Call the logout API endpoint to clear cookies
@@ -116,10 +149,44 @@ const DebugAuthState = () => {
                 border: 'none',
                 padding: '5px 10px',
                 borderRadius: '3px',
-                cursor: 'pointer'
+                cursor: 'pointer',
+                flex: '1'
               }}
             >
               Clear Auth Data
+            </button>
+            
+            <button 
+              onClick={async () => {
+                try {
+                  // Check auth status
+                  const response = await fetch(`${API_BASE_URL}/api/debug/auth`, {
+                    credentials: 'include'
+                  });
+                  
+                  if (response.ok) {
+                    const debugInfo = await response.json();
+                    console.log("Debug auth info:", debugInfo);
+                    alert(JSON.stringify(debugInfo, null, 2));
+                  } else {
+                    alert("Debug endpoint returned an error");
+                  }
+                } catch (error) {
+                  console.error('Error checking debug auth:', error);
+                  alert(`Error: ${error.message}`);
+                }
+              }}
+              style={{
+                background: '#4285F4',
+                color: 'white',
+                border: 'none',
+                padding: '5px 10px',
+                borderRadius: '3px',
+                cursor: 'pointer',
+                flex: '1'
+              }}
+            >
+              Debug Auth
             </button>
           </div>
         </div>
