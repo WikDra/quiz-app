@@ -6,26 +6,49 @@ import { useAuth } from '../context/AuthContext';
 const OAuthCallback = () => {
   const navigate = useNavigate();
   const [status, setStatus] = useState('Processing login...');
-  const { refreshUserState, updateAuthStateFromTokens } = useAuth();
-  useEffect(() => {
+  const { refreshUserState, updateAuthStateFromTokens } = useAuth();  useEffect(() => {
     // Add a small delay to ensure cookies are properly set
     setTimeout(() => {
-      updateAuthStateFromTokens()
-        .then(success => {
+      let retryCount = 0;
+      const maxRetries = 3;
+      
+      const tryGetProfile = async () => {
+        try {
+          console.log(`Attempt ${retryCount + 1} to get user profile...`);
+          const success = await updateAuthStateFromTokens();
+          
           if (success) {
             console.log('Successfully updated user state from token');
+            setStatus('Login successful...');
+            setTimeout(() => navigate('/home'), 1000);
           } else {
-            console.warn('Could not update complete user state, using basic data');
-            refreshUserState();
+            console.warn(`Attempt ${retryCount + 1} failed to get user profile`);
+            
+            if (retryCount < maxRetries) {
+              retryCount++;
+              setStatus(`Retrying... (${retryCount}/${maxRetries})`);
+              setTimeout(tryGetProfile, 1000); // Try again after 1 second
+            } else {
+              console.warn('Could not update complete user state after retries, using basic data');
+              const userFromStorage = refreshUserState();
+              
+              if (userFromStorage) {
+                setStatus('Using cached user data...');
+                setTimeout(() => navigate('/home'), 1000);
+              } else {
+                setStatus('Authentication failed.');
+                setTimeout(() => navigate('/login'), 2000);
+              }
+            }
           }
-          setStatus('Login successful...');
-          setTimeout(() => navigate('/home'), 1000);
-        })
-        .catch(error => {
+        } catch (error) {
           console.error('Error during OAuth callback:', error);
           setStatus('Authentication error');
           setTimeout(() => navigate('/login'), 2000);
-        });
+        }
+      };
+      
+      tryGetProfile();
     }, 500); // Added delay to ensure cookies are set
   }, [navigate, refreshUserState, updateAuthStateFromTokens]);
 

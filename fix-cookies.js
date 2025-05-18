@@ -57,69 +57,10 @@
     loginButton.style.borderRadius = '4px';
     loginButton.style.cursor = 'pointer';
     loginButton.style.boxShadow = '0 2px 4px rgba(0,0,0,0.2)';
-    
-    loginButton.onclick = function() {
-      // Open the login in a new window
-      const loginWindow = window.open(
-        `${API_BASE_URL}/api/login/google`,
-        'google-login',
-        'width=600,height=700'
-      );
-      
-      // Poll for window closure
-      const checkClosure = setInterval(() => {
-        if (loginWindow.closed) {
-          clearInterval(checkClosure);
-          console.log("Login window closed. Checking authentication status...");
-          
-          // After login window closes, check if we have cookies
-          setTimeout(async () => {
-            try {
-              // Try to load user profile
-              const response = await fetch(`${API_BASE_URL}/api/users/me/profile`, {
-                credentials: 'include',
-                headers: { 'Content-Type': 'application/json' }
-              });
-              
-              if (response.ok) {
-                const userData = await response.json();
-                console.log("✅ Successfully authenticated! User data:", userData);
-                
-                // Store in localStorage as a backup
-                localStorage.setItem('user_backup', JSON.stringify(userData));
-                
-                // Check cookies for debugging
-                console.log("Cookies:", document.cookie);
-                
-                // Refresh the page to update UI
-                window.location.reload();
-              } else {
-                console.log("❌ Still not authenticated after login");
-                
-                // Try the OAuth/callback directly to manually handle the flow
-                const callbackResponse = await fetch(`${API_BASE_URL}/api/debug/auth`, {
-                  credentials: 'include',
-                  headers: { 'Content-Type': 'application/json' }
-                });
-                
-                if (callbackResponse.ok) {
-                  const debugInfo = await callbackResponse.json();
-                  console.log("Debug info:", debugInfo);
-                  
-                  // Try the test cookie endpoint
-                  await fetch(`${API_BASE_URL}/api/test-cookies`, {
-                    credentials: 'include'
-                  });
-                  
-                  console.log("After test cookies, current cookies:", document.cookie);
-                }
-              }
-            } catch (error) {
-              console.error("Error checking authentication:", error);
-            }
-          }, 1000);
-        }
-      }, 500);
+      loginButton.onclick = function() {
+      // Redirect directly to the Google login endpoint
+      window.location.href = `${API_BASE_URL}/api/login/google`;
+      console.log("Redirecting to Google login...");
     };
     
     document.body.appendChild(loginButton);

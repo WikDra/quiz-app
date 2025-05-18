@@ -110,15 +110,14 @@ const Login = () => {
           <button type="submit" className="auth-button" disabled={loading}>
             {loading ? 'Logowanie...' : 'Zaloguj się'}
           </button>
-        </form>
-
-        <div className="social-login">
+        </form>        <div className="social-login">
           <p>Lub zaloguj się za pomocą:</p>
           <button 
             type="button" 
             onClick={() => {
-              // Przekierowanie bezpośrednio do backend Flask zamiast przez proxy Vite
-              window.location.href = "http://127.0.0.1:5000/api/login/google";
+              // Redirect to Google login endpoint
+              window.location.href = "http://localhost:5000/api/login/google";
+              // No polling needed since the server redirects back to our callback URL
             }} 
             className="google-login-button"
           >

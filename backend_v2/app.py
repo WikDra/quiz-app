@@ -18,10 +18,9 @@ from controllers.oauth_controller import init_oauth
 def create_app():
     """Create and configure the Flask application"""
     app = Flask(__name__)
-    
-    # Configure logging
+      # Configure logging
     logging.basicConfig(
-        level=logging.INFO,
+        level=logging.DEBUG,  # Set to DEBUG for development
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
     )
     
@@ -69,8 +68,7 @@ def create_app():
         app.logger.warning(f"Missing token: {error_string}")
         return jsonify({"error": "Missing or invalid authorization token"}), 401
         
-    bcrypt = Bcrypt(app)
-      # Configure CORS
+    bcrypt = Bcrypt(app)      # Configure CORS
     frontend_url = os.environ.get('FRONTEND_URL', 'http://localhost:5173')
     CORS(
         app,
@@ -78,7 +76,8 @@ def create_app():
         supports_credentials=True,
         allow_headers=["Content-Type", "Authorization"],
         expose_headers=["Set-Cookie"], 
-        methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"]
+        methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+        max_age=3600  # Cache preflight requests for 1 hour
     )
       # Initialize OAuth
     init_oauth(app)
@@ -130,10 +129,26 @@ def create_app():
         response.headers.pop('Set-Cookie', None)
         for header in new_cookie_headers:
             response.headers.add('Set-Cookie', header)
-            
-        # Fix CORS headers - completely remove and reset credentials header
-        response.headers.pop('Access-Control-Allow-Credentials', None)
-        response.headers.add('Access-Control-Allow-Credentials', 'true')
+              # Fix CORS headers - completely remove and reset credentials header
+        # First, check if any of the Access-Control headers have multiple values
+        for header_name in list(response.headers.keys()):
+            if header_name.startswith('Access-Control'):
+                # Get all values for this header
+                values = response.headers.getlist(header_name)
+                if len(values) > 1:
+                    # If multiple values, remove all and re-add just one
+                    app.logger.warning(f"Found duplicate CORS header: {header_name} with values: {values}")
+                    response.headers.pop(header_name, None)
+                    # Always use the first value
+                    response.headers.add(header_name, values[0])
+        
+        # Make sure the credentials header is set correctly 
+        # (needed after we merged from other endpoints that might've added it directly)
+        if 'Access-Control-Allow-Credentials' in response.headers:
+            # Only fix if it's not already set correctly
+            if response.headers.get('Access-Control-Allow-Credentials') != 'true':
+                response.headers.pop('Access-Control-Allow-Credentials', None)
+                response.headers.add('Access-Control-Allow-Credentials', 'true')
         
         # Debug logging for CORS headers
         if app.debug:

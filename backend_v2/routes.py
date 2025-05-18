@@ -235,6 +235,16 @@ def register_routes(app):
                 samesite='None'  # Required for cross-site requests
             )
             
+            # Add a visible cookie for frontend detection
+            resp.set_cookie(
+                'auth_success', 
+                'true', 
+                httponly=False,
+                secure=False,
+                samesite='None',
+                max_age=3600
+            )
+            
             app.logger.info(f"Login successful for user: {user.email}")
             return resp, 200
         except Exception as e:
@@ -356,6 +366,75 @@ def register_routes(app):
             app.logger.error(traceback.format_exc())
             return jsonify({'error': str(e)}), 500
     
+    # Additional debug endpoint for cookie testing    @app.route('/api/test-auth-cookies', methods=['GET', 'OPTIONS'])
+    def test_auth_cookies():
+        """Test endpoint specifically for diagnosing authentication cookie issues"""
+        if request.method == 'OPTIONS':
+            response = make_response()
+            response.headers.add('Access-Control-Allow-Methods', 'GET, OPTIONS')
+            response.headers.add('Access-Control-Allow-Headers', 'Content-Type, Authorization')
+            # Don't add any CORS headers here - let the global after_request handle it
+            return response
+            
+        # Check if there are valid JWT cookies
+        jwt_valid = False
+        user_id = None
+        error_msg = None
+        
+        try:
+            # Try to verify JWT
+            verify_jwt_in_request(optional=True)
+            current_user = get_jwt_identity()
+            if current_user:
+                jwt_valid = True
+                user_id = current_user
+            else:
+                error_msg = "No JWT identity found"
+        except Exception as e:
+            error_msg = str(e)
+            
+        # Get all cookies for debugging
+        cookie_info = {}
+        for name, value in request.cookies.items():
+            if name in ['access_token_cookie', 'refresh_token_cookie']:
+                # Don't show actual token values for security
+                cookie_info[name] = f"{value[:10]}...{value[-10:]}" if len(value) > 20 else "[PRESENT]"
+            else:
+                cookie_info[name] = value
+                
+        # Create a test auth cookie
+        response = make_response(jsonify({
+            'message': 'Testing auth cookies',
+            'timestamp': datetime.now().isoformat(),
+            'jwt_valid': jwt_valid,
+            'user_id': user_id,
+            'error': error_msg,
+            'cookies': cookie_info,
+            'headers': {k: v for k, v in request.headers.items() if k.lower() != 'cookie'}
+        }))
+          # Set a visible cookie for the frontend to detect
+        response.set_cookie(
+            'auth_success', 
+            'true', 
+            httponly=False, 
+            path='/',
+            secure=False,
+            samesite='None',
+            max_age=3600  # Set cookie to expire in 1 hour
+        )
+        
+        # Set a separate test cookie
+        response.set_cookie(
+            'test_visible_cookie', 
+            f'frontendvisible_{datetime.now().second}',
+            httponly=False,
+            secure=False,
+            samesite='None',
+            path='/'
+        )
+        
+        return response
+    
     # OAuth endpoints
     @app.route('/api/login/google')
     def login_with_google():
@@ -407,15 +486,15 @@ def register_routes(app):
                 secure=False,  # Set to True in production with HTTPS
                 samesite='None'  # Required for cross-site requests
             )
-            
-            # Add a non-httpOnly cookie to help the frontend detect successful auth
+              # Add a non-httpOnly cookie to help the frontend detect successful auth
             resp.set_cookie(
                 'auth_success', 
                 'true', 
                 httponly=False, 
                 path='/',
                 secure=False,
-                samesite='None'
+                samesite='None',
+                max_age=3600  # Set to expire in 1 hour
             )
             
             # Log cookies being set

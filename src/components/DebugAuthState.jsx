@@ -48,8 +48,7 @@ const DebugAuthState = () => {
       checkAuthCookies();
     }
   }, [isVisible]);
-  
-  // Check cookie state periodically
+    // Check cookie state periodically
   useEffect(() => {
     const updateCookieInfo = () => {
       const cookies = document.cookie;
@@ -60,15 +59,15 @@ const DebugAuthState = () => {
       setCookieCount(count);
       
       // Log auth state info for debugging
-      if (user && !cookieState.hasCookies) {
+      if (user && !hasAuthCookie) {
         console.warn('[AuthStateLogger] User present but no auth cookies - possible sync issue');
       }
     };
     
     updateCookieInfo();
-    const timer = setInterval(updateCookieInfo, 5000);
+    const timer = setInterval(updateCookieInfo, 2000); // Check more frequently
     return () => clearInterval(timer);
-  }, [user, cookieState]);
+  }, [user]);
   
   // This effect logs auth state changes to help with debugging
   useEffect(() => {
@@ -127,7 +126,7 @@ const DebugAuthState = () => {
           <h4>localStorage Values:</h4>
           <div>User: {storedUser ? `Present ✅ (${storedUser.substring(0, 20)}...)` : 'Not present ❌'}</div>
           
-          <div style={{ marginTop: '10px', display: 'flex', gap: '10px' }}>            <button 
+          <div style={{ marginTop: '10px', display: 'flex', gap: '10px', flexWrap: 'wrap' }}>            <button 
               onClick={async () => {
                 try {
                   // Call the logout API endpoint to clear cookies
@@ -187,6 +186,62 @@ const DebugAuthState = () => {
               }}
             >
               Debug Auth
+            </button>            <button 
+              onClick={async () => {
+                try {
+                  // Test cookies specifically
+                  // First, handle OPTIONS request explicitly
+                  await fetch(`${API_BASE_URL}/api/test-auth-cookies`, {
+                    method: 'OPTIONS',
+                    credentials: 'include',
+                    headers: {
+                      'Access-Control-Request-Method': 'GET',
+                      'Access-Control-Request-Headers': 'Content-Type',
+                    }
+                  });
+                  
+                  // Then make the actual request
+                  const response = await fetch(`${API_BASE_URL}/api/test-auth-cookies`, {
+                    method: 'GET',
+                    credentials: 'include',
+                    headers: { 'Content-Type': 'application/json' }
+                  });
+                  
+                  if (response.ok) {
+                    const testInfo = await response.json();
+                    console.log("Cookie test results:", testInfo);
+                    alert(`Cookie test results:\n- JWT Valid: ${testInfo.jwt_valid}\n- User ID: ${testInfo.user_id || 'None'}\n- Error: ${testInfo.error || 'None'}\n- Cookies: ${Object.keys(testInfo.cookies).length}`);
+                    
+                    // Check visible cookies after test
+                    console.log("Current cookies:", document.cookie);
+                    setTimeout(() => {
+                      // Check if cookies were successfully set
+                      const currentCookies = document.cookie;
+                      setCookieState(prevState => ({
+                        ...prevState,
+                        // Update state if cookies changed
+                        hasCookies: currentCookies.includes('test_visible_cookie')
+                      }));
+                    }, 500);
+                  } else {
+                    alert("Cookie test endpoint returned an error");
+                  }
+                } catch (error) {
+                  console.error('Error testing cookies:', error);
+                  alert(`Error: ${error.message}`);
+                }
+              }}
+              style={{
+                background: '#2196F3',
+                color: 'white',
+                border: 'none',
+                padding: '5px 10px',
+                borderRadius: '3px',
+                cursor: 'pointer',
+                flex: '1'
+              }}
+            >
+              Test Cookies
             </button>
           </div>
         </div>
