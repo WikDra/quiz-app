@@ -60,7 +60,8 @@ class UserController:
         try:
             # Extract and sanitize user data
             email = sanitize_input(user_data.get('email', ''))
-            username = sanitize_input(user_data.get('username', ''))
+            # Handle both username and fullName fields for flexibility
+            username = sanitize_input(user_data.get('username', '') or user_data.get('fullName', ''))
             password = user_data.get('password', '')  # Don't sanitize password
             
             # Validate required fields
@@ -109,9 +110,9 @@ class UserController:
             
             update_needed = False
             
-            # Update username if provided
-            if 'username' in data and data['username']:
-                username = sanitize_input(data['username'])
+            # Update username if provided (handle both username and fullName from frontend)
+            if ('username' in data and data['username']) or ('fullName' in data and data['fullName']):
+                username = sanitize_input(data.get('username') or data.get('fullName'))
                 if username and user.username != username:
                     user.username = username
                     update_needed = True

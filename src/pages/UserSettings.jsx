@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faArrowLeft, faUser, faEnvelope, faLock } from '@fortawesome/free-solid-svg-icons';
 import { API_BASE_URL } from '../utils/constants';
+import UserDebugPanel from '../components/UserDebugPanel';
 import '../styles/Auth.css';
 import '../styles/UserSettings.css';
 
@@ -38,6 +39,12 @@ const UserSettings = () => {
       return;
     }
     
+    // Basic URL validation
+    if (!avatarUrl.startsWith('http')) {
+      setMessage('URL musi zaczynać się od http:// lub https://');
+      return;
+    }
+    
     setIsLoading(true);
     
     try {
@@ -64,11 +71,18 @@ const UserSettings = () => {
       return;
     }
     
+    // Basic email validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      setMessage('Podaj prawidłowy adres email.');
+      return;
+    }
+    
     setIsLoading(true);
     
     try {
       const result = await updateUserData(user.id, {
-        fullName,
+        fullName, // This will be mapped to username in the backend
         email
       });
       
@@ -297,11 +311,14 @@ const UserSettings = () => {
       <div className="user-profile">
         <div className="avatar-section">
           <img 
-            src={user.avatar} 
-            alt={`Awatar ${user.fullName}`} 
-            className="profile-avatar" 
+            src={user.avatar || user.avatar_url || 'https://i.pravatar.cc/150?img=3'} 
+            alt={`Awatar ${user.fullName || user.username}`} 
+            className="profile-avatar"
+            onError={(e) => {
+              e.target.src = 'https://i.pravatar.cc/150?img=3'; // Fallback avatar
+            }}
           />
-          <h3>{user.fullName}</h3>
+          <h3>{user.fullName || user.username}</h3>
           <p>{user.email}</p>
         </div>
         
@@ -342,8 +359,20 @@ const UserSettings = () => {
               </div>
             )}
           </div>
+        </div>      </div>
+      
+      {/* Add debug panel with clear separation */}
+      {process.env.NODE_ENV !== 'production' && (
+        <div style={{
+          marginTop: '30px',
+          marginBottom: '50px', // Add space below to ensure it doesn't overlap with content at the bottom
+          borderTop: '1px solid #ddd',
+          paddingTop: '20px'
+        }}>
+          <h2 style={{ marginBottom: '20px' }}>Developer Tools</h2>
+          <UserDebugPanel />
         </div>
-      </div>
+      )}
     </div>
   );
 };

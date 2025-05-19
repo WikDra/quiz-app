@@ -117,38 +117,24 @@ def register_routes(app):
         if error:
             return jsonify({'error': error}), 500
         return jsonify(result)
+    
     @app.route('/api/users/me/profile', methods=['GET'])
     @jwt_required()
-    def get_my_profile():
-        """Get profile of logged in user"""
-        try:
-            # Log request headers for debugging
-            app.logger.info("GET /api/users/me/profile - Headers:")
-            for header, value in request.headers.items():
-                if header.lower() != 'cookie':  # Don't log actual cookie contents for security
-                    app.logger.info(f"  {header}: {value}")
-                else:
-                    app.logger.info(f"  {header}: [COOKIE DATA PRESENT]")
-                    
-            current_user_id = get_jwt_identity()
-            app.logger.info(f"JWT identity resolved to user_id: {current_user_id}")
-            
-            user = User.query.get(current_user_id)
-            if not user:
-                app.logger.warning(f"User with ID {current_user_id} not found in database")
-                return jsonify({'error': 'User not found'}), 404
-                
-            # User found, return profile data
-            user_data = user.to_dict()
-            app.logger.info(f"Successfully retrieved profile for user {current_user_id}")
-            return jsonify(user_data), 200
-            
-        except Exception as e:
-            # Log detailed error information
-            app.logger.error(f"Error in get_my_profile: {str(e)}")
-            import traceback
-            app.logger.error(traceback.format_exc())
-            return jsonify({'error': 'Internal server error fetching profile'}), 500
+    def get_current_user_profile():
+        """Get profile details for the current user"""
+        # Get user ID from JWT
+        user_id = get_jwt_identity()
+        
+        if not user_id:
+            return jsonify({'error': 'Authentication required'}), 401
+        
+        # Find user in database
+        user = User.query.get(user_id)
+        if not user:
+            app.logger.warning(f"User with ID {user_id} from token not found in database")
+            return jsonify({'error': 'User not found'}), 404
+        
+        return jsonify(user.to_dict()), 200
     
     @app.route('/api/register', methods=['POST'])
     def register():
@@ -664,3 +650,96 @@ def register_routes(app):
         if error:
             return jsonify({'error': error}), 404 if error == "Quiz not found" else 400
         return jsonify({'message': 'Quiz deleted successfully'})
+
+    # Test endpoint to debug user data structure
+    @app.route('/api/user-debug', methods=['GET'])
+    @jwt_required()
+    def user_debug():
+        """Debug endpoint for user data structure"""
+        try:
+            current_user_id = get_jwt_identity()
+            user = User.query.get(current_user_id)
+            
+            if not user:
+                return jsonify({'error': 'User not found'}), 404
+                
+            # Return detailed user data for debugging
+            user_dict = user.to_dict()
+            return jsonify({
+                'user_from_db': user_dict,
+                'user_raw': {
+                    'id': user.id,
+                    'username': user.username,
+                    'email': user.email,
+                    'avatar_url': user.avatar_url,
+                    'created_at': user.created_at.isoformat() if user.created_at else None
+                }            }), 200
+        except Exception as e:            
+            app.logger.error(f"Error in user debug endpoint: {str(e)}")
+            app.logger.error(traceback.format_exc())
+            return jsonify({'error': str(e)}), 500
+    
+    # Debug endpoints
+    @app.route('/api/debug/auth-state')
+    def debug_auth_state():
+        """Get debug information about authentication cookies and tokens"""
+        auth_info = {
+            'cookies': {}
+        }
+        
+        # Try to get JWT identity to check token validity
+        try:
+            verify_jwt_in_request(optional=True)
+            jwt_identity = get_jwt_identity()
+            auth_info['jwt_identity'] = jwt_identity        
+        except Exception as e:
+            app.logger.warning(f"JWT verification failed: {str(e)}")
+            auth_info['jwt_error'] = str(e)
+            
+        # Get all cookies from request
+        cookies = request.cookies
+        for key, value in cookies.items():
+            # Don't show the actual token values for security
+            if key in ['access_token_cookie', 'refresh_token_cookie']:
+                auth_info['cookies'][key] = '[REDACTED]'
+                auth_info[f'jwt_{key.split("_")[0]}_present'] = True
+            else:
+                auth_info['cookies'][key] = value
+        
+        return jsonify(auth_info)
+    
+    @app.route('/api/debug/current-user')
+    @jwt_required(optional=True)
+    def debug_current_user():
+        """Get debug information about the current user"""
+        # Get user ID from JWT
+        user_id = get_jwt_identity()
+        
+        debug_info = {
+            'request': {
+                'cookies': {k: '[REDACTED]' if 'token' in k.lower() else v 
+                           for k, v in request.cookies.items()},
+                'headers': {k: v for k, v in request.headers.items() 
+                           if k.lower() not in ['authorization', 'cookie']}
+            },
+            'auth': {
+                'user_id': user_id,
+                'authenticated': user_id is not None
+            }
+        }
+        
+        # If user is authenticated, add user data
+        if user_id:
+            user = User.query.get(user_id)
+            if user:
+                debug_info['user'] = user.to_dict()
+                # Add additional debug fields that might be useful
+                debug_info['user']['_extra'] = {
+                    'created_at_raw': user.created_at.isoformat() if user.created_at else None,
+                    'password_hash_exists': user.password_hash is not None,
+                    'social_provider': user.social_provider
+                }
+            else:
+                debug_info['auth']['error'] = 'User ID from token not found in database'
+        
+        return jsonify(debug_info)

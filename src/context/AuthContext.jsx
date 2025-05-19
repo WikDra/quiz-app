@@ -111,11 +111,17 @@ export const AuthProvider = ({ children }) => {
       });
       if (response.ok) {
         const data = await response.json();
-        // Ensure user data has all required fields, especially stats with quizzes
+        
+        // Ensure user data has all required fields with proper structure
         const userData = {
           ...data,
+          // Make sure both avatar and fullName are set correctly
+          avatar: data.avatar_url || data.avatar || 'https://i.pravatar.cc/150?img=3',
+          fullName: data.username || data.fullName || 'User',
+          level: data.level || 'Początkujący',
+          // Ensure stats structure is consistent
           stats: data.stats || {
-            quizzes: 0,  // Use a number for count, not an array
+            quizzes: 0,
             bestTime: '0min',
             correctAnswers: 0
           }
@@ -125,6 +131,8 @@ export const AuthProvider = ({ children }) => {
         setUser(userData);
         localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(userData));
         return true;
+      } else {
+        console.error('Failed to fetch user profile:', await response.text());
       }
     } catch (err) {
       console.error('Failed to update auth state from token:', err);
@@ -312,6 +320,14 @@ export const AuthProvider = ({ children }) => {
   // Aktualizacja awatara użytkownika
   const updateUserAvatar = useCallback(async (userId, avatarUrl) => {
     try {
+      // Basic URL validation
+      if (!avatarUrl || !avatarUrl.startsWith('http')) {
+        return {
+          success: false,
+          error: 'Podaj prawidłowy URL awatara (musi zaczynać się od http:// lub https://)'
+        };
+      }
+      
       const response = await fetch(`${API_BASE_URL}/api/users/${userId}/avatar`, {
         method: 'PUT',
         headers: {
@@ -324,6 +340,7 @@ export const AuthProvider = ({ children }) => {
       const data = await response.json();
       
       if (!response.ok) {
+        console.error("Failed to update avatar:", data.error);
         return { 
           success: false, 
           error: data.error || 'Nie udało się zaktualizować awatara' 
@@ -332,24 +349,33 @@ export const AuthProvider = ({ children }) => {
       
       // Jeśli aktualizowany jest aktualnie zalogowany użytkownik, zaktualizuj również stan
       if (user && user.id === userId) {
-        const updatedUser = { ...user, avatar: avatarUrl };
+        const updatedUser = { 
+          ...user, 
+          avatar: avatarUrl,
+          avatar_url: avatarUrl  // Update both fields to ensure consistency
+        };
         setUser(updatedUser);
         localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(updatedUser));
       }
       
       // Zaktualizuj również listę użytkowników
       setUsers(prevUsers => prevUsers.map(u => 
-        u.id === userId ? { ...u, avatar: avatarUrl } : u
+        u.id === userId ? { 
+          ...u, 
+          avatar: avatarUrl, 
+          avatar_url: avatarUrl  // Update both fields
+        } : u
       ));
       
       return { success: true };
     } catch (error) {
+      console.error("Error updating avatar:", error);
       return { 
         success: false, 
         error: error.message || 'Wystąpił błąd podczas aktualizacji awatara' 
       };
     }
-  }, [user, API_BASE_URL]);
+  }, [user, API_BASE_URL, setUsers]);
 
   const updateUserData = useCallback(async (userId, userData) => {
     try {
@@ -358,45 +384,46 @@ export const AuthProvider = ({ children }) => {
         return updateUserAvatar(userId, userData.avatar);
       }
       
-      const userIndex = users.findIndex(u => u.id === userId);
+      // Use the user-specific update endpoint instead of updating all users at once
+      const response = await fetch(`${API_BASE_URL}/api/users/${userId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include', // Include cookies with request
+        body: JSON.stringify({
+          // Map fullName to username which backend expects
+          username: userData.fullName,
+          email: userData.email
+        }),
+      });
       
-      if (userIndex === -1) {
-        return { success: false, error: 'Użytkownik nie został znaleziony' };
+      const data = await response.json();
+      
+      if (!response.ok) {
+        console.error("Failed to update user data:", data.error);
+        return { success: false, error: data.error || 'Nie udało się zaktualizować danych użytkownika' };
       }
       
-      // Aktualizacja danych użytkownika z zabezpieczeniem przed nieprawidłowymi danymi
-      const updatedUsers = [...users];
-      updatedUsers[userIndex] = {
-        ...updatedUsers[userIndex],
-        ...userData,
-        // Zabezpieczenie przed nadpisaniem istotnych danych
-        id: updatedUsers[userIndex].id,
-        email: userData.email || updatedUsers[userIndex].email,
-        password: userData.password || updatedUsers[userIndex].password
-      };
-      
-      // Use saveUsers which already includes credentials
-      const saved = await saveUsers(updatedUsers);
-      
-      if (!saved) {
-        return { success: false, error: 'Nie udało się zaktualizować danych użytkownika' };
-      }
-      
-      setUsers(updatedUsers);
-      
-      // Jeśli aktualizowany jest aktualnie zalogowany użytkownik, zaktualizuj również stan
+      // Update the user in the local state
       if (user && user.id === userId) {
-        const updatedUser = { ...updatedUsers[userIndex] };
-        delete updatedUser.password;
+        const updatedUser = { 
+          ...user,
+          username: userData.fullName || user.username,
+          fullName: userData.fullName || user.fullName,
+          email: userData.email || user.email
+        };
+        
         setUser(updatedUser);
         localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(updatedUser));
       }
       
       return { success: true };
     } catch (error) {
+      console.error("Error updating user data:", error);
       return { success: false, error: error.message || 'Wystąpił błąd podczas aktualizacji danych' };
     }
-  }, [users, user, saveUsers, updateUserAvatar]);
+  }, [user, API_BASE_URL, updateUserAvatar]);
 
   // Komponent ładowania
   if (loading) {

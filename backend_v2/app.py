@@ -45,8 +45,11 @@ def create_app():
     
     # Configure JWT cookies
     app.config["JWT_TOKEN_LOCATION"] = ["cookies"]
-    app.config["JWT_COOKIE_SECURE"] = False  # Set to True in production with HTTPS
-    app.config["JWT_COOKIE_CSRF_PROTECT"] = False  # Set to True in production
+    
+    # Determine if we're in production for cookie security
+    is_production = os.environ.get('FLASK_ENV') == 'production'
+    app.config["JWT_COOKIE_SECURE"] = is_production  # Secure in production with HTTPS
+    app.config["JWT_COOKIE_CSRF_PROTECT"] = is_production  # Enable in production
     app.config["JWT_COOKIE_SAMESITE"] = "None"  # Required for cross-site requests
     
     # Initialize extensions
@@ -92,6 +95,9 @@ def create_app():
             
         new_cookie_headers = []
         
+        # Check if running in production (HTTPS)
+        is_production = os.environ.get('FLASK_ENV') == 'production'
+        
         # Process each cookie
         for header in cookie_headers:
             # Add necessary security attributes for cross-site requests
@@ -103,7 +109,7 @@ def create_app():
                     'Path': '/',
                     'SameSite': 'None',  # Required for cross-site requests
                     'HttpOnly': True,    # Security: no JS access to cookie
-                    'Secure': False      # Set to True in production with HTTPS
+                    'Secure': is_production  # Only set Secure in production with HTTPS
                 }
                 
                 # Keep any existing attributes that we're not explicitly setting

@@ -57,6 +57,34 @@
     // Initial check
     checkCookies();
   }
+  
+  // Check cookies in the browser
+  function checkCookies() {
+    console.log('\n🍪 Checking cookies:');
+    
+    const cookies = {};
+    document.cookie.split(';').forEach(cookie => {
+      if (cookie.trim()) {
+        const [name, value] = cookie.trim().split('=');
+        cookies[name] = value;
+      }
+    });
+    
+    const hasAccessToken = document.cookie.includes('access_token_cookie');
+    const hasRefreshToken = document.cookie.includes('refresh_token_cookie');
+    const hasAuthSuccess = document.cookie.includes('auth_success');
+    
+    // Update UI if available
+    const cookieStatus = document.getElementById('cookie-status');
+    if (cookieStatus) {
+      cookieStatus.innerHTML = `
+        <div>Cookies found: ${Object.keys(cookies).length}</div>
+        <div>Access Token: ${hasAccessToken ? '✅' : '❌'}</div>
+        <div>Refresh Token: ${hasRefreshToken ? '✅' : '❌'}</div>
+        <div>Auth Success: ${hasAuthSuccess ? '✅' : '❌'}</div>
+        <pre style="margin-top:5px;max-height:100px;overflow:auto">${JSON.stringify(cookies, null, 2)}</pre>
+      `;
+    }
     
     console.log('Cookies found:', Object.keys(cookies).join(', ') || 'None');
     console.log('JWT Access Token visible in document.cookie:', hasAccessToken);
@@ -70,11 +98,67 @@
     return cookies;
   }
   
+  // Set a cookie with JavaScript
+  function setJSCookies() {
+    console.log('Setting test cookie with JavaScript...');
+    
+    // Set a test cookie with SameSite=None
+    document.cookie = 'js_test_cookie=true; path=/; SameSite=None; Secure';
+    
+    // Update UI with new cookie state
+    checkCookies();
+    
+    console.log('Test cookie set: js_test_cookie=true');
+  }
+  
+  // Set a cookie via server
+  function setServerCookies() {
+    console.log('Setting test cookie via server...');
+    
+    fetch(`${API_BASE_URL}/api/test-cookies`, {
+      credentials: 'include',
+      cache: 'no-store'
+    })
+    .then(response => {
+      console.log('Server response:', response.status);
+      return response.json();
+    })
+    .then(data => {
+      console.log('Server response data:', data);
+      checkCookies();
+    })
+    .catch(err => {
+      console.error('Error setting server cookie:', err);
+    });
+  }
+  
+  // Clear all cookies
+  function clearCookies() {
+    console.log('Clearing cookies...');
+    
+    // Get all cookies
+    const cookies = document.cookie.split(';');
+    
+    // For each cookie, set expiration to past date
+    for (let cookie of cookies) {
+      if (cookie.trim()) {
+        const name = cookie.trim().split('=')[0];
+        document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/`;
+      }
+    }
+    
+    // Update UI
+    checkCookies();
+    
+    console.log('Cookies cleared');
+  }
+  
   // Test endpoints
   async function testEndpoints() {
-    const endpoints = [
+  const endpoints = [
       '/api/test-cookies',
-      '/api/debug/auth',
+      '/api/debug/auth-state',
+      '/api/debug/current-user',
       '/api/health',
       '/api/users/me/profile',
       '/api/users'
@@ -139,10 +223,9 @@
     document.body.removeChild(loginFixScript);
     
     console.log('Added cookie marker for server-side debugging');
-    
-    // Try to make a debug auth request
+      // Try to make a debug auth request
     try {
-      const response = await fetch(`${API_BASE_URL}/api/debug/auth`, {
+      const response = await fetch(`${API_BASE_URL}/api/debug/auth-state`, {
         credentials: 'include',
         cache: 'no-store'
       });
@@ -250,6 +333,7 @@
   }
   
   // Run the debug sequence
+  createDebugUI();
   const cookies = checkCookies();
   await testEndpoints();
   const isAuthenticated = await attemptFix();
