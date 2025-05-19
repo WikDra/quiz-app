@@ -166,8 +166,9 @@ def register_routes(app):
             access_token = create_access_token(identity=str(user.id))
             refresh_token = create_refresh_token(identity=str(user.id))
 
-            # Create response
+            # Create response with properly structured user data
             user_data = user.to_dict()
+            app.logger.info(f"User data structure after registration: {user_data}")
             resp = make_response(jsonify(user_data))
 
             # Set access token as HTTP-only cookie
@@ -214,8 +215,10 @@ def register_routes(app):
             access_token = create_access_token(identity=str(user.id))
             refresh_token = create_refresh_token(identity=str(user.id))
             
-            # Create response
-            resp = jsonify(user_data=user.to_dict())
+            # Create response with properly structured user data
+            user_data = user.to_dict()
+            app.logger.info(f"User data being returned: {user_data}")
+            resp = jsonify(user_data=user_data)
 
             # Set access token as HTTP-only cookie
             resp.set_cookie(

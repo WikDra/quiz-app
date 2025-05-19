@@ -64,7 +64,8 @@ export const AuthProvider = ({ children }) => {
     } finally {
       setLoading(false);
     }
-  }, []);// Funkcja do synchronizacji użytkownika z tokenami
+  }, []);
+  // Funkcja do synchronizacji użytkownika z tokenami
   const refreshUserState = useCallback(() => {
     const storedUser = localStorage.getItem(STORAGE_KEYS.USER);
     if (storedUser) {
@@ -75,16 +76,11 @@ export const AuthProvider = ({ children }) => {
         const sanitizedUser = {
           ...userData,
           stats: userData.stats || { 
-            quizzes: [], 
+            quizzes: 0,  // Use a number for count, not an array
             bestTime: '0min', 
             correctAnswers: 0 
           }
         };
-        
-        // Upewnij się, że stats.quizzes istnieje i jest tablicą
-        if (!sanitizedUser.stats.quizzes) {
-          sanitizedUser.stats.quizzes = [];
-        }
         
         setUser(sanitizedUser);
         
@@ -119,15 +115,11 @@ export const AuthProvider = ({ children }) => {
         const userData = {
           ...data,
           stats: data.stats || {
-            quizzes: [],
+            quizzes: 0,  // Use a number for count, not an array
             bestTime: '0min',
             correctAnswers: 0
           }
         };
-
-        if (!userData.stats.quizzes) {
-          userData.stats.quizzes = [];
-        }
 
         console.log('User data updated from API:', userData);
         setUser(userData);
@@ -150,19 +142,19 @@ export const AuthProvider = ({ children }) => {
         // Upewnij się, że dane użytkownika zawierają wszystkie wymagane pola
         const sanitizedUser = {
           ...userData,
+          // Ensure basic user fields exist
+          fullName: userData.fullName || userData.username || 'User',
+          avatar: userData.avatar || userData.avatar_url || 'https://i.pravatar.cc/150?img=3',
+          level: userData.level || 'Początkujący',
+          // Ensure stats is properly structured
           stats: userData.stats || { 
-            quizzes: [], 
+            quizzes: 0, 
             bestTime: '0min', 
             correctAnswers: 0 
           }
         };
         
-        // Upewnij się, że stats.quizzes istnieje i jest tablicą
-        if (!sanitizedUser.stats.quizzes) {
-          sanitizedUser.stats.quizzes = [];
-        }
-        
-        console.log('Initial user load:', sanitizedUser);
+        console.log('Initial user load with sanitized data:', sanitizedUser);
         setUser(sanitizedUser);
         
         // Zapisz zaktualizowane dane do localStorage jeśli były zmodyfikowane
@@ -200,8 +192,7 @@ export const AuthProvider = ({ children }) => {
       setError('Failed to save user data. Please try again later.');
       return false;
     }
-  }, []);
-  // Rejestracja użytkownika - zaktualizowana funkcja, aby korzystała z nowego API
+  }, []);  // Rejestracja użytkownika - zaktualizowana funkcja, aby korzystała z nowego API
   const register = useCallback(async (fullName, email, password) => {
     try {
       if (!fullName?.trim() || !email?.trim() || !password?.trim()) {
@@ -215,7 +206,11 @@ export const AuthProvider = ({ children }) => {
           'Content-Type': 'application/json',
         },
         credentials: 'include', // Include cookies with request
-        body: JSON.stringify({ fullName, email, password }),
+        body: JSON.stringify({ 
+          username: fullName, // Send fullName as username which backend expects
+          email, 
+          password 
+        }),
       });
       
       const data = await response.json();

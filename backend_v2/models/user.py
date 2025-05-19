@@ -33,8 +33,15 @@ class User(db.Model):
         return {
             'id': self.id,
             'username': self.username,
+            'fullName': self.username,  # Map username to fullName for frontend compatibility
             'email': self.email,
-            'avatar_url': self.avatar_url,
+            'avatar': self.avatar_url or 'https://i.pravatar.cc/150?img=3',  # Default avatar
+            'level': 'Początkujący',  # Default level
             'is_admin': self.is_admin,
-            'created_at': self.created_at.isoformat() if self.created_at else None
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'stats': {
+                'quizzes': 0,
+                'bestTime': '0min',
+                'correctAnswers': 0
+            }
         }

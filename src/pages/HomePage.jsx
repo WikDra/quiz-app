@@ -116,32 +116,53 @@ const NavigationBar = memo(({
 });
 
 // Komponent statystyk użytkownika
-const UserStats = memo(({ user }) => (
+const UserStats = memo(({ user }) => {
+  // Safety check - if user is null/undefined, show loading state
+  if (!user) {
+    return (
+      <div className="user-stats loading">
+        <div className="spinner"></div>
+        <p>Loading user data...</p>
+      </div>
+    );
+  }
+
+  // Ensure stats object exists with default values
+  const stats = user?.stats || { quizzes: 0, bestTime: '0min', correctAnswers: 0 };
+  
+  return (
   <div className="user-stats">
-    <img src={user.avatar} alt={`Awatar ${user.fullName}`} className="large-avatar" />
+    <img 
+      src={user.avatar || user.avatar_url || 'https://i.pravatar.cc/150?img=3'} 
+      alt={`Awatar ${user.fullName || user.username || 'User'}`} 
+      className="large-avatar" 
+      onError={(e) => {
+        e.target.src = 'https://i.pravatar.cc/150?img=3'; // Fallback avatar on error
+      }}
+    />
     <div className="stats-info">
-      <h2>{user.fullName}</h2>
-      <p className="user-level">{user.level}</p>
+      <h2>{user.fullName || user.username || 'User'}</h2>
+      <p className="user-level">{user.level || 'Początkujący'}</p>
       <div className="progress-bar">
         <div className="progress" style={{ width: '70%' }}></div>
       </div>
       <div className="stats-grid">
         <div className="stat-item">
-          <h3>{user.stats.quizzes}</h3>
+          <h3>{stats.quizzes}</h3>
           <p>Rozwiązanych quizów</p>
         </div>
         <div className="stat-item">
-          <h3>{user.stats.bestTime}</h3>
+          <h3>{stats.bestTime}</h3>
           <p>Najlepszy czas</p>
         </div>
         <div className="stat-item">
-          <h3>{user.stats.correctAnswers}</h3>
+          <h3>{stats.correctAnswers}</h3>
           <p>Poprawnych odpowiedzi</p>
         </div>
       </div>
     </div>
   </div>
-));
+)});
 
 // Komponent filtru kategorii
 const CategoryFilter = memo(({ categories, selectedCategory, onSelectCategory }) => (
@@ -292,7 +313,17 @@ const HomePage = () => {
   const { user, logout } = useAuth();
   const { quizzes, deleteQuiz, loading, error, refreshQuizzes, filterQuizzes } = useQuiz();
   const navigate = useNavigate();
-    // Stany komponentu
+  
+  // Guard against missing user
+  useEffect(() => {
+    if (!user) {
+      console.log("User not found, redirecting to login");
+      navigate('/login');
+      return;
+    }
+  }, [user, navigate]);
+  
+  // Stany komponentu
   const [searchQuery, setSearchQuery] = useState('');
   const [notifications, setNotifications] = useState([
     { id: 1, text: 'Nowy quiz dostępny: "Cyberbezpieczeństwo 2024"', unread: true },
