@@ -70,9 +70,15 @@ def create_app():
         
     bcrypt = Bcrypt(app)      # Configure CORS
     frontend_url = os.environ.get('FRONTEND_URL', 'http://localhost:5173')
+    # Allow multiple origins for development and testing
+    allowed_origins = [
+        frontend_url,
+        'http://localhost:8000',  # For test pages
+        'http://127.0.0.1:8000'   # Alternative local test address
+    ]
     CORS(
         app,
-        origins=[frontend_url], 
+        origins=allowed_origins, 
         supports_credentials=True,
         allow_headers=["Content-Type", "Authorization"],
         expose_headers=["Set-Cookie"], 

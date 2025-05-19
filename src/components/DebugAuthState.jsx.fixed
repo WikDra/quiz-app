@@ -199,38 +199,6 @@ const DebugAuthState = () => {
             <button
               onClick={async () => {
                 try {
-                  // Call the server endpoint that sets visible cookies
-                  const response = await fetch(`${API_BASE_URL}/api/debug/set-visible-cookie`, {
-                    credentials: 'include'
-                  });
-                  
-                  if (response.ok) {
-                    alert("Server has set visible cookies. If they don't appear, check your browser settings.");
-                    updateCookieInfo();
-                  } else {
-                    alert("Failed to set cookies from server");
-                  }
-                } catch (error) {
-                  console.error("Error setting cookies from server:", error);
-                  alert(`Error: ${error.message}`);
-                }
-              }}
-              style={{
-                background: '#9C27B0',
-                color: 'white',
-                border: 'none',
-                padding: '5px 10px',
-                borderRadius: '3px',
-                cursor: 'pointer',
-                flex: '1'
-              }}
-            >
-              Server Set Cookie
-            </button>
-            
-            <button
-              onClick={async () => {
-                try {
                   // Force refresh cookies
                   const response = await fetch(`${API_BASE_URL}/api/token/refresh`, {
                     method: 'POST',

@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simple Cookie Tester</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            line-height: 1.6;
+        }
+        h1 {
+            color: #4285F4;
+        }
+        button {
+            background: #4285F4;
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            margin: 5px;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        button:hover {
+            background: #3367D6;
+        }
+        .result {
+            background: #f5f5f5;
+            padding: 15px;
+            border-radius: 4px;
+            margin-top: 20px;
+            white-space: pre-wrap;
+            font-family: monospace;
+        }
+        .error {
+            color: #D32F2F;
+            font-weight: bold;
+        }
+        .success {
+            color: #388E3C;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <h1>Simple Cookie Tester</h1>
+    
+    <p>This page tests cookie functionality without relying on any JavaScript modules or frameworks.</p>
+    
+    <div>
+        <button onclick="testJSCookie()">Set JS Cookie</button>
+        <button onclick="testServerCookie()">Set Server Cookie</button>
+        <button onclick="checkAllCookies()">Check Cookies</button>
+        <button onclick="clearCookies()">Clear Cookies</button>
+    </div>
+    
+    <div id="result" class="result">No results yet</div>
+    
+    <script>
+        // API URL
+        const API_URL = 'http://localhost:5000';
+        
+        // Display results in the result div
+        function showResult(text, isError = false) {
+            const resultDiv = document.getElementById('result');
+            resultDiv.innerHTML = text;
+            resultDiv.className = isError ? 'result error' : 'result';
+        }
+        
+        // Set a cookie using JavaScript
+        function testJSCookie() {
+            try {
+                // Create timestamp for unique value
+                const timestamp = new Date().toISOString();
+                
+                // Set a few different cookies for testing
+                document.cookie = `test_js_cookie=value_${timestamp}; path=/`;
+                document.cookie = `auth_success=true; path=/; expires=${new Date(Date.now() + 3600000).toUTCString()}`;
+                
+                showResult(`Set 2 cookies successfully:\n- test_js_cookie\n- auth_success\n\nAll cookies: ${document.cookie}`);
+                
+                // Verify if cookies were set
+                setTimeout(() => {
+                    if (document.cookie.includes('test_js_cookie')) {
+                        showResult(`SUCCESS: Cookies were set correctly.\n\nAll cookies: ${document.cookie}`);
+                    } else {
+                        showResult(`WARNING: Could not verify cookies were set.\n\nAll cookies: ${document.cookie}`, true);
+                    }
+                }, 100);
+            } catch (error) {
+                showResult(`ERROR: ${error.message}`, true);
+                console.error('Error setting cookie:', error);
+            }
+        }
+        
+        // Set a cookie using the server
+        async function testServerCookie() {
+            try {
+                showResult('Requesting cookies from server...');
+                
+                const response = await fetch(`${API_URL}/api/debug/set-visible-cookie`, {
+                    credentials: 'include'
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    
+                    // Check if cookies were set after a brief delay
+                    setTimeout(() => {
+                        showResult(`Server Response: ${JSON.stringify(data, null, 2)}\n\nCurrent cookies: ${document.cookie}`);
+                    }, 200);
+                } else {
+                    showResult(`Server returned error: ${response.status} ${response.statusText}`, true);
+                }
+            } catch (error) {
+                showResult(`ERROR: ${error.message}`, true);
+                console.error('Error requesting server cookies:', error);
+            }
+        }
+        
+        // Check all cookies
+        function checkAllCookies() {
+            const cookies = document.cookie;
+            const cookieList = cookies.split(';').map(c => c.trim()).filter(c => c);
+            
+            if (cookieList.length === 0) {
+                showResult('No cookies found!', true);
+                return;
+            }
+            
+            const cookieInfo = cookieList.map(c => {
+                const [name, value] = c.split('=');
+                return `${name}: ${value}`;
+            }).join('\n');
+            
+            showResult(`Found ${cookieList.length} cookies:\n\n${cookieInfo}`);
+        }
+        
+        // Clear all cookies
+        function clearCookies() {
+            const cookies = document.cookie.split(';');
+            
+            for (let i = 0; i < cookies.length; i++) {
+                const cookie = cookies[i];
+                const eqPos = cookie.indexOf('=');
+                const name = eqPos > -1 ? cookie.substring(0, eqPos).trim() : cookie.trim();
+                document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/;`;
+            }
+            
+            showResult('All cookies have been cleared');
+            
+            // Verify
+            setTimeout(checkAllCookies, 100);
+        }
+        
+        // Check for cookies on page load
+        window.addEventListener('DOMContentLoaded', checkAllCookies);
+    </script>
+</body>
+</html>

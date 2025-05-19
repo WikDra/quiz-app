@@ -2,11 +2,27 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { API_BASE_URL } from '../utils/constants';
 
 const OAuthCallback = () => {
   const navigate = useNavigate();
   const [status, setStatus] = useState('Processing login...');
-  const { refreshUserState, updateAuthStateFromTokens } = useAuth();  useEffect(() => {
+  const { refreshUserState, updateAuthStateFromTokens } = useAuth();
+  
+  useEffect(() => {
+    // Try to ensure auth_success cookie is set (as a backup if server didn't set it)
+    try {
+      const expires = new Date();
+      expires.setTime(expires.getTime() + 3600 * 1000); // 1 hour
+      document.cookie = `auth_success=true; path=/; expires=${expires.toUTCString()}; SameSite=None; Secure`;
+      
+      // Log the cookie state
+      console.log('Current cookies:', document.cookie);
+      console.log('Set auth_success cookie as backup');
+    } catch (error) {
+      console.error('Error setting backup auth_success cookie:', error);
+    }
+  
     // Add a small delay to ensure cookies are properly set
     setTimeout(() => {
       let retryCount = 0;

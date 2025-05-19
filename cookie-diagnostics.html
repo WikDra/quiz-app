@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cookie Diagnostics - Quiz App</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        h1 {
+            color: #4285F4;
+            margin-bottom: 20px;
+        }
+        
+        .instructions {
+            background-color: #f5f5f5;
+            border-left: 4px solid #4285F4;
+            padding: 15px;
+            margin-bottom: 20px;
+        }
+        
+        .buttons {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-bottom: 30px;
+        }
+        
+        button {
+            padding: 10px 15px;
+            border: none;
+            border-radius: 4px;
+            background-color: #4285F4;
+            color: white;
+            font-weight: bold;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        
+        button:hover {
+            background-color: #3367D6;
+        }
+        
+        code {
+            background-color: #f1f1f1;
+            padding: 2px 4px;
+            border-radius: 3px;
+            font-family: 'Courier New', Courier, monospace;
+        }
+        
+        .code-block {
+            background-color: #f1f1f1;
+            padding: 15px;
+            border-radius: 5px;
+            overflow-x: auto;
+            font-family: 'Courier New', Courier, monospace;
+        }
+        
+        #cookie-info {
+            margin-top: 20px;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Quiz App Cookie Diagnostics</h1>
+    
+    <div class="instructions">
+        <p>This page helps diagnose cookie issues in the Quiz App. It provides tools to check, set, and troubleshoot cookies used for authentication.</p>
+        <p>The diagnostics panel will automatically appear in the top-left corner of this page.</p>
+    </div>
+    
+    <div class="buttons">
+        <button onclick="window.location.href = 'http://localhost:5173'">
+            Go to Main App
+        </button>
+        
+        <button onclick="location.reload()">
+            Reload Page
+        </button>
+        
+        <button onclick="window.open('http://localhost:5000/api/login/google', '_self')">
+            Login with Google
+        </button>
+    </div>
+    
+    <h2>Common Cookie Issues</h2>
+    
+    <ul>
+        <li><strong>HttpOnly Cookies</strong>: These cookies can't be accessed by JavaScript, but are sent with requests. They are marked as "Present on server" but won't show in document.cookie.</li>
+        <li><strong>SameSite Restrictions</strong>: Cookies with SameSite=None must also have the Secure attribute, requiring HTTPS.</li>
+        <li><strong>Cross-Origin Requests</strong>: Cookies may not be sent in cross-origin requests unless credentials='include' is specified.</li>
+        <li><strong>Cookie Attributes</strong>: Missing or incorrect Path, Domain, or Expires attributes can cause cookies to be rejected.</li>
+    </ul>
+    
+    <h2>Manual Testing</h2>
+    
+    <p>You can test cookie functionality by running these commands in your browser console:</p>
+    
+    <div class="code-block">
+        // Set a test cookie
+        document.cookie = "test_manual=true; path=/; SameSite=None; Secure";
+        
+        // Check all cookies
+        console.log(document.cookie);
+    </div>
+    
+    <div id="cookie-info">
+        <h3>Current Cookies (Client-Side)</h3>
+        <pre id="cookie-display">Loading...</pre>
+    </div>
+    
+    <script>
+        // Display current cookies
+        function updateCookieDisplay() {
+            const cookieDisplay = document.getElementById('cookie-display');
+            const cookies = document.cookie.split(';').map(c => c.trim()).filter(c => c);
+            
+            if (cookies.length > 0) {
+                cookieDisplay.textContent = cookies.join('\n');
+            } else {
+                cookieDisplay.textContent = 'No client-side cookies detected';
+            }
+        }
+        
+        // Update on load
+        document.addEventListener('DOMContentLoaded', updateCookieDisplay);
+        
+        // Update every few seconds
+        setInterval(updateCookieDisplay, 3000);
+    </script>
+    
+    <!-- Load the diagnostics script -->
+    <script src="cookie-diagnostics.js"></script>
+</body>
+</html>

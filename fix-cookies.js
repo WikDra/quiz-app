@@ -57,7 +57,7 @@
     loginButton.style.borderRadius = '4px';
     loginButton.style.cursor = 'pointer';
     loginButton.style.boxShadow = '0 2px 4px rgba(0,0,0,0.2)';
-      loginButton.onclick = function() {
+    loginButton.onclick = function() {
       // Redirect directly to the Google login endpoint
       window.location.href = `${API_BASE_URL}/api/login/google`;
       console.log("Redirecting to Google login...");

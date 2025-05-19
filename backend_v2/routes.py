@@ -270,13 +270,26 @@ def register_routes(app):
             samesite='None'  # Required for cross-site requests
         )
         
-        return resp, 200
-    @app.route('/api/logout', methods=['POST'])
+        return resp, 200    @app.route('/api/logout', methods=['POST'])
     def logout():
         """Logout user by clearing cookies"""
         resp = make_response(jsonify({'message': 'Logged out successfully'}))
-        resp.delete_cookie('access_token_cookie')
-        resp.delete_cookie('refresh_token_cookie')
+        
+        # Clear JWT cookies (HttpOnly)
+        resp.delete_cookie('access_token_cookie', path='/', domain=None)
+        resp.delete_cookie('refresh_token_cookie', path='/', domain=None)
+        
+        # Clear client-visible cookies
+        resp.delete_cookie('auth_success', path='/', domain=None)
+        resp.delete_cookie('visible_auth', path='/', domain=None)
+        resp.delete_cookie('test_visible_cookie', path='/', domain=None)
+        resp.delete_cookie('js_test_cookie', path='/', domain=None)
+        
+        # Set explicit header to clear cookies
+        resp.headers.add('Set-Cookie', 'auth_success=; Path=/; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT;')
+        resp.headers.add('Set-Cookie', 'visible_auth=; Path=/; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT;')
+        
+        app.logger.info("All cookies cleared during logout")
         return resp, 200
     
     # Debug endpoints (only for development)
@@ -365,6 +378,49 @@ def register_routes(app):
             app.logger.error(f"Error in debug endpoint: {str(e)}")
             app.logger.error(traceback.format_exc())
             return jsonify({'error': str(e)}), 500
+    
+    # Additional debug endpoint for cookie testing
+    @app.route('/api/debug/set-visible-cookie', methods=['GET', 'OPTIONS'])
+    def set_visible_cookie():
+        """Endpoint to set a visible client-side cookie for testing purposes"""
+        if os.environ.get('FLASK_ENV') == 'production':
+            return jsonify({'error': 'Debug endpoints not available in production'}), 403
+            
+        if request.method == 'OPTIONS':
+            response = make_response()
+            response.headers.add('Access-Control-Allow-Methods', 'GET, OPTIONS')
+            response.headers.add('Access-Control-Allow-Headers', 'Content-Type, Authorization')
+            return response
+            
+        # Create a response with a visible cookie
+        response = make_response(jsonify({
+            'message': 'Client-visible cookie set',
+            'timestamp': datetime.now().isoformat()
+        }))
+        
+        # Set a visible cookie with appropriate attributes
+        response.set_cookie(
+            'client_visible_cookie', 
+            f'set_by_server_{datetime.now().second}',
+            httponly=False,  # Crucial - this makes it visible to JavaScript
+            secure=False,    # Set to True if using HTTPS
+            samesite='None', # Required for cross-site requests
+            path='/',
+            max_age=3600     # 1 hour expiry
+        )
+        
+        # Set auth_success cookie too
+        response.set_cookie(
+            'auth_success', 
+            'true', 
+            httponly=False,  # Must be visible to client-side JavaScript
+            secure=False,    # Set to True if using HTTPS
+            samesite='None', # Required for cross-site requests
+            path='/',
+            max_age=3600     # 1 hour expiry
+        )
+        
+        return response
     
     # Additional debug endpoint for cookie testing    @app.route('/api/test-auth-cookies', methods=['GET', 'OPTIONS'])
     def test_auth_cookies():
@@ -485,8 +541,7 @@ def register_routes(app):
                 path='/',
                 secure=False,  # Set to True in production with HTTPS
                 samesite='None'  # Required for cross-site requests
-            )
-              # Add a non-httpOnly cookie to help the frontend detect successful auth
+            )              # Add a non-httpOnly cookie to help the frontend detect successful auth
             resp.set_cookie(
                 'auth_success', 
                 'true', 
@@ -496,6 +551,11 @@ def register_routes(app):
                 samesite='None',
                 max_age=3600  # Set to expire in 1 hour
             )
+            
+            # Set another visible cookie with a different method that might be more compatible
+            # with certain browsers that block third-party cookies
+            resp.headers.add('Set-Cookie', 
+                'visible_auth=true; Path=/; Max-Age=3600; SameSite=None')
             
             # Log cookies being set
             app.logger.info(f"Setting cookies for user {user.id}. Redirecting to: {redirect_url}")

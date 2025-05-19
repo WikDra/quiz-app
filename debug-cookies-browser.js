@@ -1,32 +1,62 @@
 /**
  * Cookie-based Authentication Debug Tool for Quiz App
  * 
- * Usage: Copy this entire file and paste it into your browser console
- * when you're on your application page to diagnose authentication issues.
+ * Usage: 
+ * 1. Open your application in a browser
+ * 2. Include this script with a <script> tag, or
+ * 3. Copy-paste this entire file into the browser console
  */
 
-(async function() {
+(function() {
   // Configuration
   const API_BASE_URL = 'http://localhost:5000';
   const FRONTEND_URL = 'http://localhost:5173';
   
   console.log('=== 🔍 Auth Debugging Tool for Quiz App ===');
   
-  // Check for the presence of cookies
-  function checkCookies() {
-    console.log('\n📝 Checking cookies in browser:');
+  // Create UI for interactive testing
+  function createDebugUI() {
+    console.log('Creating debug UI...');
     
-    // Get all cookies
-    const cookies = document.cookie.split(';').reduce((acc, cookie) => {
-      const [name, value] = cookie.trim().split('=');
-      if (name) acc[name] = value;
-      return acc;
-    }, {});
+    // Create container
+    const container = document.createElement('div');
+    container.style.position = 'fixed';
+    container.style.top = '20px';
+    container.style.right = '20px';
+    container.style.width = '300px';
+    container.style.padding = '15px';
+    container.style.backgroundColor = 'rgba(0, 0, 0, 0.8)';
+    container.style.color = 'white';
+    container.style.borderRadius = '5px';
+    container.style.zIndex = '10000';
+    container.style.boxShadow = '0 4px 8px rgba(0, 0, 0, 0.3)';
+    container.style.fontFamily = 'Arial, sans-serif';
     
-    // Check for JWT cookies (though they should be httpOnly)
-    const hasAccessToken = 'access_token_cookie' in cookies;
-    const hasRefreshToken = 'refresh_token_cookie' in cookies;
-    const hasAuthSuccess = 'auth_success' in cookies;
+    // Add content
+    container.innerHTML = `
+      <h3 style="margin:0 0 10px 0;font-weight:bold">Cookie Debug</h3>
+      <div id="cookie-status" style="background:rgba(0,0,0,0.3);padding:10px;border-radius:3px;margin-bottom:10px;max-height:200px;overflow:auto;font-family:monospace;font-size:12px">
+        Checking cookies...
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;">
+        <button id="check-cookies" style="background:#4285F4;color:white;border:none;padding:8px;border-radius:3px;cursor:pointer;font-weight:bold;font-size:12px">Check Cookies</button>
+        <button id="set-js-cookie" style="background:#0F9D58;color:white;border:none;padding:8px;border-radius:3px;cursor:pointer;font-weight:bold;font-size:12px">Set JS Cookie</button>
+        <button id="set-server-cookie" style="background:#DB4437;color:white;border:none;padding:8px;border-radius:3px;cursor:pointer;font-weight:bold;font-size:12px">Set Server Cookie</button>
+        <button id="clear-cookies" style="background:#666;color:white;border:none;padding:8px;border-radius:3px;cursor:pointer;font-weight:bold;font-size:12px">Clear Cookies</button>
+      </div>
+    `;
+    
+    document.body.appendChild(container);
+    
+    // Add event listeners
+    document.getElementById('check-cookies').addEventListener('click', checkCookies);
+    document.getElementById('set-js-cookie').addEventListener('click', setJSCookies);
+    document.getElementById('set-server-cookie').addEventListener('click', setServerCookies);
+    document.getElementById('clear-cookies').addEventListener('click', clearCookies);
+    
+    // Initial check
+    checkCookies();
+  }
     
     console.log('Cookies found:', Object.keys(cookies).join(', ') || 'None');
     console.log('JWT Access Token visible in document.cookie:', hasAccessToken);
