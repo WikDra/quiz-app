@@ -37,13 +37,23 @@ def create_app():
     app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'UNSAFE_DEV_KEY_PLEASE_RUN_SETUP_SECURITY')
     app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(os.path.dirname(__file__), 'quiz_app.db')
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-    
-    # JWT configuration
+      # JWT configuration
     app.config['JWT_SECRET_KEY'] = os.environ.get('JWT_SECRET_KEY', 'UNSAFE_DEV_JWT_KEY_PLEASE_RUN_SETUP_SECURITY')
     app.config["JWT_ACCESS_TOKEN_EXPIRES"] = timedelta(hours=1)
     app.config["JWT_REFRESH_TOKEN_EXPIRES"] = timedelta(days=30)
-      # Configure JWT cookies
     app.config["JWT_TOKEN_LOCATION"] = ["cookies"]
+    
+    # Additional JWT security settings
+    app.config["JWT_COOKIE_DOMAIN"] = os.environ.get('COOKIE_DOMAIN', None)  # Set in production
+    app.config["JWT_MAX_REFRESH_COUNT"] = 100  # Maximum number of times a token can be refreshed
+    app.config["JWT_REFRESH_TOKEN_ROTATION"] = True  # Enable refresh token rotation
+    app.config["JWT_BLACKLIST_ENABLED"] = True  # Enable token blacklisting for revoked tokens
+    app.config["JWT_IDENTITY_CLAIM"] = "sub"  # Use 'sub' claim for user ID
+    app.config["JWT_ERROR_MESSAGE_KEY"] = "error"  # Key for error messages in responses
+    
+    # JWT token claims customization
+    app.config["JWT_DECODE_ALGORITHMS"] = ["HS256"]  # Allowed algorithms for token verification
+    app.config["JWT_PRIVATE_CLAIMS_PREFIX"] = "quiz_"  # Prefix for custom claims
     
     # Determine if we're in production for cookie security settings
     is_production = os.environ.get('FLASK_ENV') == 'production'
@@ -55,20 +65,64 @@ def create_app():
     db.init_app(app)
     migrate = Migrate(app, db)
     jwt = JWTManager(app)
-      # JWT error handlers
-    @jwt.expired_token_loader
+      # JWT error handlers    @jwt.expired_token_loader
     def expired_token_callback(jwt_header, jwt_payload):
-        app.logger.warning(f"Expired token used: {jwt_payload}")
-        return jsonify({"error": "Token has expired"}), 401
+        token_type = jwt_payload.get('type', 'access')
+        app.logger.warning(f"Expired {token_type} token used: {jwt_payload}")
+        
+        error_message = (
+            "Refresh token has expired. Please log in again."
+            if token_type == "refresh"
+            else "Access token has expired. Please refresh your token."
+        )
+        
+        return jsonify({
+            "error": error_message,
+            "code": "token_expired",
+            "token_type": token_type
+        }), 401
+
     @jwt.invalid_token_loader
     def invalid_token_callback(error_string):
         app.logger.warning(f"Invalid token or decode error: {error_string}")
-        return jsonify({"error": "Invalid token format or signature"}), 401
+        return jsonify({
+            "error": "Invalid token format or signature",
+            "code": "token_invalid",
+            "details": error_string
+        }), 401
     
     @jwt.unauthorized_loader
     def unauthorized_callback(error_string):
         app.logger.warning(f"Missing token: {error_string}")
-        return jsonify({"error": "Missing or invalid authorization token"}), 401
+        return jsonify({
+            "error": "Authentication required",
+            "code": "token_missing",
+            "details": error_string
+        }), 401
+        
+    @jwt.needs_fresh_token_loader
+    def fresh_token_loader_callback(jwt_header, jwt_payload):
+        app.logger.warning(f"Fresh token required: {jwt_payload}")
+        return jsonify({
+            "error": "Fresh login required for this action",
+            "code": "fresh_token_required"
+        }), 401
+        
+    @jwt.revoked_token_loader
+    def revoked_token_callback(jwt_header, jwt_payload):
+        app.logger.warning(f"Revoked token used: {jwt_payload}")
+        return jsonify({
+            "error": "Token has been revoked",
+            "code": "token_revoked"
+        }), 401
+        
+    @jwt.token_verification_failed_loader
+    def verification_failed_callback(jwt_header, jwt_payload):
+        app.logger.warning(f"Token verification failed: {jwt_payload}")
+        return jsonify({
+            "error": "Token verification failed",
+            "code": "token_verification_failed"
+        }), 401
         
     bcrypt = Bcrypt(app)      # Configure CORS
     frontend_url = os.environ.get('FRONTEND_URL', 'http://localhost:5173')

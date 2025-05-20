@@ -7,66 +7,59 @@ import { API_BASE_URL } from '../utils/constants';
 const OAuthCallback = () => {
   const navigate = useNavigate();
   const [status, setStatus] = useState('Processing login...');
-  const { refreshUserState, updateAuthStateFromTokens } = useAuth();
+  const { verifyAuthState, updateAuthStateFromTokens, refreshToken } = useAuth();
   
   useEffect(() => {
-    // Try to ensure auth_success cookie is set (as a backup if server didn't set it)
-    try {
-      const expires = new Date();
-      expires.setTime(expires.getTime() + 3600 * 1000); // 1 hour
-      document.cookie = `auth_success=true; path=/; expires=${expires.toUTCString()}; SameSite=None; Secure`;
-      
-      // Log the cookie state
-      console.log('Current cookies:', document.cookie);
-      console.log('Set auth_success cookie as backup');
-    } catch (error) {
-      console.error('Error setting backup auth_success cookie:', error);
-    }
-  
-    // Add a small delay to ensure cookies are properly set
-    setTimeout(() => {
-      let retryCount = 0;
-      const maxRetries = 3;
-      
-      const tryGetProfile = async () => {
-        try {
-          console.log(`Attempt ${retryCount + 1} to get user profile...`);
-          const success = await updateAuthStateFromTokens();
-          
-          if (success) {
-            console.log('Successfully updated user state from token');
-            setStatus('Login successful...');
-            setTimeout(() => navigate('/home'), 1000);
-          } else {
-            console.warn(`Attempt ${retryCount + 1} failed to get user profile`);
-            
-            if (retryCount < maxRetries) {
-              retryCount++;
-              setStatus(`Retrying... (${retryCount}/${maxRetries})`);
-              setTimeout(tryGetProfile, 1000); // Try again after 1 second
-            } else {
-              console.warn('Could not update complete user state after retries, using basic data');
-              const userFromStorage = refreshUserState();
-              
-              if (userFromStorage) {
-                setStatus('Using cached user data...');
-                setTimeout(() => navigate('/home'), 1000);
-              } else {
-                setStatus('Authentication failed.');
-                setTimeout(() => navigate('/login'), 2000);
-              }
-            }
-          }
-        } catch (error) {
-          console.error('Error during OAuth callback:', error);
-          setStatus('Authentication error');
-          setTimeout(() => navigate('/login'), 2000);
+    const processOAuthLogin = async () => {
+      try {
+        setStatus('Verifying authentication...');
+        
+        // First try to directly verify the auth state
+        const isVerified = await verifyAuthState();
+        
+        if (isVerified) {
+          console.log('OAuth login verified successfully');
+          setStatus('Login successful!');
+          setTimeout(() => navigate('/home'), 1000);
+          return;
         }
-      };
-      
-      tryGetProfile();
-    }, 500); // Added delay to ensure cookies are set
-  }, [navigate, refreshUserState, updateAuthStateFromTokens]);
+        
+        // If not verified, try to update auth state from tokens
+        setStatus('Updating authentication state...');
+        const isUpdated = await updateAuthStateFromTokens();
+        
+        if (isUpdated) {
+          console.log('Updated auth state from tokens successfully');
+          setStatus('Login successful!');
+          setTimeout(() => navigate('/home'), 1000);
+          return;
+        }
+        
+        // If still not authenticated, try refreshing the token
+        setStatus('Refreshing authentication...');
+        const isRefreshed = await refreshToken();
+        
+        if (isRefreshed && await verifyAuthState()) {
+          console.log('Authentication refreshed successfully');
+          setStatus('Login successful!');
+          setTimeout(() => navigate('/home'), 1000);
+          return;
+        }
+        
+        // If all attempts fail, redirect to login
+        console.error('All authentication attempts failed');
+        setStatus('Authentication failed.');
+        setTimeout(() => navigate('/login'), 2000);
+      } catch (error) {
+        console.error('Error processing OAuth callback:', error);
+        setStatus('Authentication error');
+        setTimeout(() => navigate('/login'), 2000);
+      }
+    };
+    
+    // Add a small delay to ensure cookies are properly set
+    setTimeout(processOAuthLogin, 1000);
+  }, [navigate, verifyAuthState, updateAuthStateFromTokens, refreshToken]);
 
   return (
     <div className="oauth-callback">
@@ -77,7 +70,8 @@ const OAuthCallback = () => {
           <div className="loading-spinner"></div>
         </div>
       </div>
-    </div>  );
+    </div>
+  );
 };
 
 export default OAuthCallback;

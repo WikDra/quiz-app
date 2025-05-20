@@ -6,6 +6,11 @@ import { LoadingSpinner, ErrorMessage } from './components/SharedComponents';
 import './styles/SharedComponents.css';
 
 import AuthStateLogger from './components/AuthStateLogger';
+import AuthVerifier from './components/AuthVerifier';
+// Conditionally import TokenDiagnostics in development mode
+const TokenDiagnostics = import.meta.env.DEV 
+  ? lazy(() => import('./components/TokenDiagnostics'))
+  : () => null;
 const DebugAuthState = lazy(() => import('./components/DebugAuthState'));
 // Lazy loading komponentów stron
 const Login = lazy(() => import('./pages/Login'));
@@ -145,14 +150,14 @@ const AppRoutes = memo(() => {
 });
 
 // Główny komponent aplikacji
-const App = memo(() => {
-  return (
+const App = memo(() => {  return (
     <AuthProvider>
       <QuizProvider>
-        <Router>
-          <OnlineStatusHandler />
+        <Router>          <OnlineStatusHandler />
           <AuthStateLogger />
+          <AuthVerifier />
           <AppRoutes />
+          {import.meta.env.DEV && <TokenDiagnostics />}
           <DebugAuthState />
         </Router>
       </QuizProvider>

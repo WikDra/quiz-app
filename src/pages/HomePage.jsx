@@ -306,22 +306,35 @@ const RemindersSection = memo(({ reminders }) => (
       ))}
     </div>
   </div>
-));
-
-// Główny komponent strony
+));  // Główny komponent strony
 const HomePage = () => {
-  const { user, logout } = useAuth();
+  const { user, logout, verifyAuthState } = useAuth();
   const { quizzes, deleteQuiz, loading, error, refreshQuizzes, filterQuizzes } = useQuiz();
   const navigate = useNavigate();
   
-  // Guard against missing user
+  // Guard against missing user or invalid auth
   useEffect(() => {
-    if (!user) {
-      console.log("User not found, redirecting to login");
-      navigate('/login');
-      return;
+    async function checkAuth() {
+      if (!user) {
+        console.log("User not found, redirecting to login");
+        navigate('/login');
+        return;
+      }
+      
+      // Dodatkowo sprawdź, czy token jest nadal ważny
+      try {
+        const isAuthenticated = await verifyAuthState();
+        if (!isAuthenticated) {
+          console.log("Authentication invalid, redirecting to login");
+          navigate('/login');
+        }
+      } catch (error) {
+        console.error("Error verifying auth state:", error);
+      }
     }
-  }, [user, navigate]);
+    
+    checkAuth();
+  }, [user, navigate, verifyAuthState]);
   
   // Stany komponentu
   const [searchQuery, setSearchQuery] = useState('');

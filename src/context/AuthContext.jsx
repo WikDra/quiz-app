@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { API_BASE_URL, API_ENDPOINTS, STORAGE_KEYS, USER_LEVELS } from '../utils/constants';
 
 const AuthContext = createContext(null);
@@ -8,56 +8,302 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
   const [users, setUsers] = useState([]);
   const [error, setError] = useState(null);
-  
-  // Cookie helper to patch document.cookie API for cross-site compatibility
-  const patchCookieApi = useCallback(() => {
-    if (typeof document === 'undefined') return; // Skip if not in browser environment
-    
-    console.log("Patching document.cookie API for cross-site compatibility");
-    
+  const [tokenRefreshTimer, setTokenRefreshTimer] = useState(null);
+
+  // Create refs for functions that have circular dependencies
+  const scheduleTokenRefreshRef = useRef(() => {});
+  const verifyAuthStateRef = useRef(() => {});
+  const refreshTokenRef = useRef(() => {});
+  const logoutRef = useRef(() => {});
+
+  // Wylogowanie użytkownika
+  const logout = useCallback(async () => {
     try {
-      // Save the original setters and getters
-      const originalCookieGetter = Object.getOwnPropertyDescriptor(Document.prototype, 'cookie').get;
-      const originalCookieSetter = Object.getOwnPropertyDescriptor(Document.prototype, 'cookie').set;
+      // Clear token refresh timer
+      if (tokenRefreshTimer) {
+        clearTimeout(tokenRefreshTimer);
+        setTokenRefreshTimer(null);
+      }
       
-      // Replace the setter
-      Object.defineProperty(document, 'cookie', {
-        get: function() {
-          return originalCookieGetter.call(document);
-        },
-        set: function(val) {
-          console.log("Setting cookie with cross-site compatibility:", val);
-          
-          // Fix SameSite attribute if needed
-          if (val.indexOf('SameSite=') === -1 && val.indexOf('samesite=') === -1) {
-            val += '; SameSite=None';
-          }
-          
-          // Call the original setter
-          return originalCookieSetter.call(document, val);
-        },
-        configurable: true
+      // Call the API to clear cookies
+      const response = await fetch(`${API_BASE_URL}/api/logout`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+        }
       });
-    } catch (err) {
-      console.error("Error patching cookie API:", err);
+      
+      if (!response.ok) {
+        console.warn("API logout endpoint nie zwrócił poprawnej odpowiedzi:", response.status);
+      }
+    } catch (error) {
+      console.error("Błąd podczas wylogowywania:", error);
+    } finally {
+      // Clear local state regardless of API success
+      setUser(null);
+      localStorage.removeItem(STORAGE_KEYS.USER);
+      
+      // Opcjonalnie przekieruj na stronę logowania
+      if (window.location.pathname !== '/login') {
+        window.location.href = '/login';
+      }
     }
-  }, []);
+  }, [API_BASE_URL, tokenRefreshTimer]);
+    // Funkcja do sprawdzania, czy użytkownik jest zalogowany poprzez weryfikację JWT
+  const verifyAuthState = useCallback(async () => {
+    const MIN_INTERVAL = 5000; // 5 seconds between checks
+    const lastVerifyTime = localStorage.getItem('lastAuthVerifyTime');
+    const now = Date.now();
 
-  // Apply cookie patch on initialization
-  useEffect(() => {
-    patchCookieApi();
-  }, [patchCookieApi]);
+    if (lastVerifyTime) {
+      const timeSinceLastVerify = now - parseInt(lastVerifyTime, 10);
+      if (timeSinceLastVerify < MIN_INTERVAL) {
+        // Use cached state if available
+        const cachedUser = localStorage.getItem(STORAGE_KEYS.USER);
+        if (cachedUser) {
+          try {
+            const parsedUser = JSON.parse(cachedUser);
+            if (parsedUser && parsedUser.id) {
+              return true;
+            }
+          } catch (err) {
+            console.warn('Invalid cached user data:', err);
+          }
+        }
+        return false;
+      }
+    }
 
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000); // 5s timeout
+
+      const response = await fetch(`${API_BASE_URL}/api/users/me/profile`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        signal: controller.signal
+      });
+
+      clearTimeout(timeoutId);
+      localStorage.setItem('lastAuthVerifyTime', now.toString());
+      
+      if (response.ok) {
+        const userData = await response.json();
+        const sanitizedUser = {
+          ...userData,
+          avatar: userData.avatar_url || userData.avatar || 'https://i.pravatar.cc/150?img=3',
+          fullName: userData.username || userData.fullName || 'User',
+          level: userData.level || 'Początkujący',
+          stats: userData.stats || {
+            quizzes: 0,
+            bestTime: '0min',
+            correctAnswers: 0
+          },
+          lastVerified: now
+        };
+        
+        setUser(sanitizedUser);
+        localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(sanitizedUser));
+        
+        if (!tokenRefreshTimer) {
+          scheduleTokenRefreshRef.current();
+        }
+        return true;
+      } else {
+        if (response.status === 401) {
+          setUser(null);
+          localStorage.removeItem(STORAGE_KEYS.USER);
+          return false;
+        }
+        // For other errors, try to use cached data
+        const cachedUser = localStorage.getItem(STORAGE_KEYS.USER);
+        if (cachedUser) {
+          try {
+            const parsedUser = JSON.parse(cachedUser);
+            if (parsedUser && parsedUser.id && now - parsedUser.lastVerified < 24 * 60 * 60 * 1000) {
+              console.warn('Using cached auth state due to API error');
+              return true;
+            }
+          } catch (err) {
+            console.warn('Invalid cached user data:', err);
+          }
+        }
+        setUser(null);
+        localStorage.removeItem(STORAGE_KEYS.USER);
+        return false;
+      }
+    } catch (err) {
+      console.error('Błąd podczas weryfikacji stanu uwierzytelniania:', err);
+      const cachedUser = localStorage.getItem(STORAGE_KEYS.USER);
+      if (err.name === 'AbortError' || err.message.includes('Failed to fetch')) {
+        if (cachedUser) {
+          try {
+            const parsedUser = JSON.parse(cachedUser);
+            if (parsedUser && parsedUser.id && now - parsedUser.lastVerified < 24 * 60 * 60 * 1000) {
+              console.warn('Using cached auth state due to network error');
+              return true;
+            }
+          } catch (parseErr) {
+            console.warn('Invalid cached user data:', parseErr);
+          }
+        }
+      }
+      setUser(null);
+      localStorage.removeItem(STORAGE_KEYS.USER);
+      return false;
+    }
+  }, [API_BASE_URL, tokenRefreshTimer]);
+
+  // Function to refresh token when it's about to expire
+  const refreshToken = useCallback(async () => {
+    try {
+      console.log("Attempting to refresh access token...");
+      
+      // Check if we have a recent refresh to avoid rate limiting
+      const lastRefreshTime = localStorage.getItem('lastTokenRefresh');
+      const now = Date.now();
+      if (lastRefreshTime) {
+        const timeSinceLastRefresh = now - parseInt(lastRefreshTime, 10);
+        if (timeSinceLastRefresh < 30000) { // 30 seconds minimum between refreshes
+          console.log("Skipping token refresh - too soon since last refresh");
+          return true;
+        }
+      }
+
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000); // 5s timeout
+
+      // Attempt to refresh token
+      const response = await fetch(`${API_BASE_URL}/api/token/refresh`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include', // Important: needed for cookies
+        signal: controller.signal
+      });
+      
+      clearTimeout(timeoutId);
+      
+      if (response.ok) {
+        const data = await response.json();
+        console.log("Access token refreshed successfully");
+        
+        if (data.token_status?.issued_at) {
+          const expirationTime = new Date(data.token_status.issued_at).getTime() + (60 * 60 * 1000);
+          localStorage.setItem('tokenExpiration', expirationTime.toString());
+          localStorage.setItem('lastTokenRefresh', now.toString());
+        }
+        
+        scheduleTokenRefreshRef.current();
+        return true;
+      } else {
+        const errorText = await response.text();
+        console.error("Failed to refresh token:", errorText);
+        if (response.status === 401) {
+          console.warn("Token refresh failed with 401, logging out");
+          await logoutRef.current();
+          return false;
+        }
+        const isStillValid = await verifyAuthStateRef.current();
+        if (!isStillValid) {
+          console.warn("Auth state invalid after token refresh failure, logging out");
+          await logoutRef.current();
+        }
+        return false;
+      }
+    } catch (err) {
+      console.error('Error refreshing token:', err);
+      if (err.name === 'AbortError') {
+        console.warn('Token refresh request timed out');
+      }
+      return false;
+    }
+  }, [API_BASE_URL]);
+  // Schedule token refresh function with debouncing and error prevention
+  const scheduleTokenRefresh = useCallback(() => {
+    // Clear any existing timer first
+    if (tokenRefreshTimer) {
+      clearTimeout(tokenRefreshTimer);
+      setTokenRefreshTimer(null);
+    }
+
+    // Prevent too frequent scheduling attempts
+    const lastScheduleTime = localStorage.getItem('lastTokenRefreshSchedule');
+    const lastRefreshTime = localStorage.getItem('lastTokenRefresh');
+    const now = Date.now();
+
+    // Don't schedule if we recently did a refresh or schedule
+    const MIN_INTERVAL = 30000; // 30 seconds
+    if (lastScheduleTime && now - parseInt(lastScheduleTime, 10) < MIN_INTERVAL) {
+      return;
+    }
+    if (lastRefreshTime && now - parseInt(lastRefreshTime, 10) < MIN_INTERVAL) {
+      return;
+    }
+
+    const tokenExp = localStorage.getItem('tokenExpiration');
+    
+    if (tokenExp) {
+      const expirationTime = parseInt(tokenExp, 10);
+      if (expirationTime > now) {
+        const timeUntilExpiry = expirationTime - now;
+        const REFRESH_MARGIN = 5 * 60 * 1000; // 5 minutes before expiry
+        
+        if (timeUntilExpiry > REFRESH_MARGIN) {
+          const refreshTime = timeUntilExpiry - REFRESH_MARGIN;
+          const timer = setTimeout(() => {
+            refreshTokenRef.current().catch(err => {
+              console.error('Error in scheduled token refresh:', err);
+            });
+          }, refreshTime);
+          
+          setTokenRefreshTimer(timer);
+          localStorage.setItem('lastTokenRefreshSchedule', now.toString());
+          console.log(`Token refresh scheduled in ${Math.round(refreshTime/60000)} minutes`);
+          return;
+        }
+      }
+    }
+
+    // If we got here, we either have no expiration time or it's too close/passed
+    console.log('No valid token expiration time found or too close to expiry, refreshing token now');
+    refreshTokenRef.current().catch(err => {
+      console.error('Error in immediate token refresh:', err);
+    });
+  }, [tokenRefreshTimer]);
   // Funkcja do pobierania danych użytkowników
   const fetchUsers = useCallback(async () => {
+    // Check if we have recent user data in cache
+    const lastUsersFetch = localStorage.getItem('lastUsersFetch');
+    const now = Date.now();
+    if (lastUsersFetch && now - parseInt(lastUsersFetch, 10) < 30000) { // 30s cache
+      const cachedUsers = localStorage.getItem('cachedUsers');
+      if (cachedUsers) {
+        const parsedUsers = JSON.parse(cachedUsers);
+        setUsers(parsedUsers);
+        setError(null);
+        return;
+      }
+    }
+
     try {
       const response = await fetch(API_ENDPOINTS.USERS, {
         credentials: 'include' // Include cookies with request
       });
       if (!response.ok) throw new Error('Failed to load users');
       const data = await response.json();
-      setUsers(data.users || []);
+      const usersList = data.users || [];
+      setUsers(usersList);
       setError(null);
+      
+      // Cache the results
+      localStorage.setItem('cachedUsers', JSON.stringify(usersList));
+      localStorage.setItem('lastUsersFetch', now.toString());
     } catch (err) {
       console.error('Error loading users:', err);
       setError('Failed to load user data. Please try again later.');
@@ -65,41 +311,126 @@ export const AuthProvider = ({ children }) => {
       setLoading(false);
     }
   }, []);
-  // Funkcja do synchronizacji użytkownika z tokenami
-  const refreshUserState = useCallback(() => {
-    const storedUser = localStorage.getItem(STORAGE_KEYS.USER);
-    if (storedUser) {
-      try {
-        const userData = JSON.parse(storedUser);
+    // Function to sync user state with backend and tokens
+  const refreshUserState = useCallback(async () => {
+    const MIN_UPDATE_INTERVAL = 30000; // 30 seconds
+    const lastUpdate = localStorage.getItem('lastUserStateUpdate');
+    const now = Date.now();
+
+    // Check cache validity
+    if (lastUpdate) {
+      const timeSinceLastUpdate = now - parseInt(lastUpdate, 10);
+      if (timeSinceLastUpdate < MIN_UPDATE_INTERVAL) {
+        const cachedUser = localStorage.getItem(STORAGE_KEYS.USER);
+        if (cachedUser) {
+          try {
+            const parsedUser = JSON.parse(cachedUser);
+            if (parsedUser && parsedUser.id) { // Basic validation
+              return true;
+            }
+          } catch (err) {
+            console.warn('Invalid cached user data:', err);
+          }
+        }
+      }
+    }
+
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000); // 5s timeout
+
+      const response = await fetch(`${API_BASE_URL}/api/users/me/profile`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        signal: controller.signal
+      });
+      
+      clearTimeout(timeoutId);
+      
+      if (response.ok) {
+        const userData = await response.json();
         
-        // Upewnij się, że dane użytkownika zawierają wszystkie wymagane pola
+        // Handle token expiration if provided
+        if (userData.token_exp) {
+          const expirationTime = userData.token_exp * 1000;
+          localStorage.setItem('tokenExpiration', expirationTime.toString());
+          
+          // Schedule refresh if needed
+          if (!tokenRefreshTimer && expirationTime > now) {
+            scheduleTokenRefresh();
+          }
+        }
+        
+        // Sanitize and normalize user data
         const sanitizedUser = {
           ...userData,
-          stats: userData.stats || { 
-            quizzes: 0,  // Use a number for count, not an array
-            bestTime: '0min', 
-            correctAnswers: 0 
-          }
+          avatar: userData.avatar_url || userData.avatar || 'https://i.pravatar.cc/150?img=3',
+          fullName: userData.username || userData.fullName || 'User',
+          level: userData.level || USER_LEVELS.BEGINNER,
+          stats: {
+            quizzes: userData.stats?.quizzes || 0,
+            bestTime: userData.stats?.bestTime || '0min',
+            correctAnswers: userData.stats?.correctAnswers || 0
+          },
+          lastUpdated: now
         };
         
         setUser(sanitizedUser);
-        
-        // Zapisz zaktualizowane dane do localStorage jeśli były zmodyfikowane
-        if (JSON.stringify(userData) !== JSON.stringify(sanitizedUser)) {
-          localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(sanitizedUser));
-          console.log('User data structure was fixed during refresh');
-        }
+        localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(sanitizedUser));
+        localStorage.setItem('lastUserStateUpdate', now.toString());
         
         return true;
-      } catch (err) {
-        console.error('Error parsing user data during refresh:', err);
+      } else {
+        if (response.status === 401) {
+          // Token likely expired or invalid
+          await logoutRef.current();
+        } else {
+          console.error('Error refreshing user state:', await response.text());
+        }
+        setUser(null);
         localStorage.removeItem(STORAGE_KEYS.USER);
+        return false;
+      }
+    } catch (err) {
+      console.error('Error refreshing user state:', err);
+      
+      // Use localStorage as fallback only for network/timeout errors
+      if (err.name === 'AbortError' || err.message.includes('Failed to fetch')) {
+        const storedUser = localStorage.getItem(STORAGE_KEYS.USER);
+        if (storedUser) {
+          try {
+            const userData = JSON.parse(storedUser);
+            if (userData && userData.id && now - userData.lastUpdated < 24 * 60 * 60 * 1000) { // 24h max cache
+              setUser(userData);
+              console.warn('Using cached user data as fallback - will verify ASAP');
+              return true;
+            }
+          } catch (parseErr) {
+            console.error('Error parsing cached user data:', parseErr);
+          }
+        }
+      }
+      
+      setUser(null);
+      localStorage.removeItem(STORAGE_KEYS.USER);
+      return false;
+    }
+  }, [API_BASE_URL, scheduleTokenRefresh, tokenRefreshTimer]);
+  // Helper function to update the auth state based on current tokens (now cookies)
+  const updateAuthStateFromTokens = useCallback(async () => {
+    // Check if we have a recent update to avoid unnecessary API calls
+    const lastAuthUpdate = localStorage.getItem('lastAuthUpdate');
+    const now = Date.now();
+    if (lastAuthUpdate) {
+      const timeSinceLastUpdate = now - parseInt(lastAuthUpdate, 10);
+      if (timeSinceLastUpdate < 30000) { // 30 seconds cache
+        return true;
       }
     }
-    return false;
-  }, [setUser]);
-    // Helper function to update the auth state based on current tokens (now cookies)
-  const updateAuthStateFromTokens = useCallback(async () => {
+
     try {
       // Make an API call to get fresh user data - now uses cookies
       const response = await fetch(`${API_BASE_URL}/api/users/me/profile`, {
@@ -127,61 +458,72 @@ export const AuthProvider = ({ children }) => {
           }
         };
 
-        console.log('User data updated from API:', userData);
         setUser(userData);
         localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(userData));
+        localStorage.setItem('lastAuthUpdate', now.toString());
         return true;
       } else {
         console.error('Failed to fetch user profile:', await response.text());
       }
     } catch (err) {
       console.error('Failed to update auth state from token:', err);
+      // Use cached data if available
+      const cachedUser = localStorage.getItem(STORAGE_KEYS.USER);
+      if (cachedUser) {
+        try {
+          setUser(JSON.parse(cachedUser));
+          return true;
+        } catch (parseErr) {
+          console.error('Error parsing cached user data:', parseErr);
+        }
+      }
     }
     return false;
   }, [API_BASE_URL]);
-
+  // Pierwsze ładowanie i okresowe sprawdzanie stanu uwierzytelniania
   useEffect(() => {
-    // Pobierz zalogowanego użytkownika z localStorage
-    const storedUser = localStorage.getItem(STORAGE_KEYS.USER);
-    if (storedUser) {
+    let checkTimer = null;
+    const CHECK_INTERVAL = 60000; // Check every minute
+
+    async function initialAuthCheck() {
+      setLoading(true);
       try {
-        const userData = JSON.parse(storedUser);
+        const isAuthenticated = await verifyAuthState();
         
-        // Upewnij się, że dane użytkownika zawierają wszystkie wymagane pola
-        const sanitizedUser = {
-          ...userData,
-          // Ensure basic user fields exist
-          fullName: userData.fullName || userData.username || 'User',
-          avatar: userData.avatar || userData.avatar_url || 'https://i.pravatar.cc/150?img=3',
-          level: userData.level || 'Początkujący',
-          // Ensure stats is properly structured
-          stats: userData.stats || { 
-            quizzes: 0, 
-            bestTime: '0min', 
-            correctAnswers: 0 
+        if (!isAuthenticated) {
+          if (localStorage.getItem(STORAGE_KEYS.USER)) {
+            console.log('Wykryto dane użytkownika w localStorage, ale token JWT jest nieważny. Usuwanie danych...');
+            localStorage.removeItem(STORAGE_KEYS.USER);
           }
-        };
-        
-        console.log('Initial user load with sanitized data:', sanitizedUser);
-        setUser(sanitizedUser);
-        
-        // Zapisz zaktualizowane dane do localStorage jeśli były zmodyfikowane
-        if (JSON.stringify(userData) !== JSON.stringify(sanitizedUser)) {
-          localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(sanitizedUser));
-          console.log('User data structure was fixed during initial load');
         }
-        
-        setLoading(false);
       } catch (err) {
-        console.warn('Failed to parse user data during initial load:', err);
-        console.error('Invalid user data in storage:', err);
-        localStorage.removeItem(STORAGE_KEYS.USER);
+        console.error('Błąd podczas początkowego sprawdzania uwierzytelniania:', err);
+      } finally {
+        setLoading(false);
       }
     }
     
-    // Pobierz dane użytkowników z API
-    fetchUsers();
-  }, [fetchUsers]);
+    // Initial check
+    initialAuthCheck();
+
+    // Set up periodic checks if user is logged in
+    const periodicCheck = () => {
+      if (user) {
+        verifyAuthState().catch(err => {
+          console.error('Error in periodic auth check:', err);
+        });
+      }
+    };
+
+    checkTimer = setInterval(periodicCheck, CHECK_INTERVAL);
+    
+    return () => {
+      if (checkTimer) {
+        clearInterval(checkTimer);
+      }
+    };
+  }, [verifyAuthState, user]);
+  
   // Zapisywanie użytkowników
   const saveUsers = useCallback(async (updatedUsers) => {
     try {
@@ -285,6 +627,9 @@ export const AuthProvider = ({ children }) => {
         console.log("AuthContext: Ustawianie danych użytkownika");
         setUser(data.user_data);
         localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(data.user_data));
+        
+        // Set up token refresh schedule
+        scheduleTokenRefresh();
       } else {
         console.warn("AuthContext: Brak danych użytkownika w odpowiedzi API");
       }
@@ -296,26 +641,7 @@ export const AuthProvider = ({ children }) => {
         success: false, 
         error: error.message || 'Wystąpił błąd podczas logowania' 
       };
-    }
-  }, []);
-  // Wylogowanie użytkownika
-  const logout = useCallback(async () => {
-    try {
-      // Call the API to clear cookies
-      await fetch(`${API_BASE_URL}/api/logout`, {
-        method: 'POST',
-        credentials: 'include',
-        headers: {
-          'Content-Type': 'application/json',
-        }
-      });
-    } catch (error) {
-      console.error("Error during logout:", error);
-    }
-    // Clear local state regardless of API success
-    setUser(null);
-    localStorage.removeItem(STORAGE_KEYS.USER);
-  }, [API_BASE_URL]);
+    }  }, [API_BASE_URL, scheduleTokenRefresh]);
 
   // Aktualizacja awatara użytkownika
   const updateUserAvatar = useCallback(async (userId, avatarUrl) => {
@@ -434,7 +760,7 @@ export const AuthProvider = ({ children }) => {
       </div>
     );
   }
-    const contextValue = {
+  const contextValue = {
     user,
     users,
     loading,
@@ -448,6 +774,8 @@ export const AuthProvider = ({ children }) => {
     saveUsers,
     refreshUserState,
     updateAuthStateFromTokens,
+    verifyAuthState,
+    refreshToken
   };
 
   return (

@@ -116,26 +116,45 @@ def register_routes(app):
         result, error = UserController.update_user_avatar(user_id, avatar_url)
         if error:
             return jsonify({'error': error}), 500
-        return jsonify(result)
+        return jsonify(result)    
     
     @app.route('/api/users/me/profile', methods=['GET'])
     @jwt_required()
     def get_current_user_profile():
         """Get profile details for the current user"""
-        # Get user ID from JWT
-        user_id = get_jwt_identity()
+        try:
+            # Get user ID and token claims from JWT
+            user_id = get_jwt_identity()
+            jwt_claims = get_jwt()
+            
+            if not user_id:
+                return jsonify({'error': 'Authentication required'}), 401
+            
+            # Find user in database
+            user = User.query.get(user_id)
+            if not user:
+                app.logger.warning(f"User with ID {user_id} from token not found in database")
+                return jsonify({'error': 'User not found'}), 404
+                
+            # Add token expiration info to response
+            user_data = user.to_dict()
+            user_data['token_exp'] = jwt_claims.get('exp')
+            user_data['token_iat'] = jwt_claims.get('iat')
+              # Set cache control headers to prevent unnecessary requests
+            resp = make_response(jsonify(user_data))
+            resp.headers['Cache-Control'] = 'private, max-age=5'  # Cache for 5 seconds
+            resp.headers['ETag'] = str(hash(str(user_data)))  # Add ETag for caching
+            
+            # Add CORS headers
+            frontend_url = os.environ.get('FRONTEND_URL', 'http://localhost:5173')
+            resp.headers.add('Access-Control-Allow-Credentials', 'true')
+            resp.headers.add('Access-Control-Allow-Origin', app.config.get('CORS_ORIGINS', frontend_url))
+            
+            return resp
+        except Exception as e:
+            app.logger.error(f"Error in get_current_user_profile: {str(e)}")
+            return jsonify({'error': 'Internal server error'}), 500
         
-        if not user_id:
-            return jsonify({'error': 'Authentication required'}), 401
-        
-        # Find user in database
-        user = User.query.get(user_id)
-        if not user:
-            app.logger.warning(f"User with ID {user_id} from token not found in database")
-            return jsonify({'error': 'User not found'}), 404
-        
-        return jsonify(user.to_dict()), 200
-    
     @app.route('/api/register', methods=['POST'])
     def register():
         """Register new user"""
@@ -198,11 +217,14 @@ def register_routes(app):
             app.logger.info(f"Creating JWT tokens for user {user.id}")
             access_token = create_access_token(identity=str(user.id))
             refresh_token = create_refresh_token(identity=str(user.id))
-            
-            # Create response with properly structured user data
+              # Create response with properly structured user data
             user_data = user.to_dict()
             app.logger.info(f"User data being returned: {user_data}")
-            resp = jsonify(user_data=user_data)            # Set access token as HTTP-only cookie            
+            resp = jsonify(user_data=user_data)
+            
+            frontend_url = os.environ.get('FRONTEND_URL', 'http://localhost:5173')
+            
+            # Set access token as HTTP-only cookie            
             resp.set_cookie(
                 'access_token_cookie', 
                 access_token, 
@@ -222,7 +244,7 @@ def register_routes(app):
                 path='/'
             )
             
-            # Add a visible cookie for frontend detection
+            # Add a visible cookie for frontend detection and compatibility with older browsers
             resp.set_cookie(
                 'auth_success', 
                 'true', 
@@ -233,31 +255,91 @@ def register_routes(app):
                 path='/'
             )
             
+            # Explicitly add cors headers to ensure they work in all browsers
+            resp.headers.add('Access-Control-Allow-Credentials', 'true')
+            resp.headers.add('Access-Control-Allow-Origin', app.config.get('CORS_ORIGINS', frontend_url))
+            
             app.logger.info(f"Login successful for user: {user.email}")
             return resp, 200
         except Exception as e:
             app.logger.error(f"Error creating JWT tokens: {str(e)}")
             return jsonify({'error': 'Internal server error during authentication'}), 500
-    
-    @app.route('/api/token/refresh', methods=['POST'])
-    @jwt_required(refresh=True)    
+    @app.route('/api/token/refresh', methods=['POST', 'OPTIONS'])
     def refresh_token():
-        """Refresh access token using refresh token"""
-        current_user_id = get_jwt_identity()
-        access_token = create_access_token(identity=str(current_user_id))
-          # Create response
-        resp = make_response(jsonify({'message': 'Token refreshed successfully'}))
-          # Set new access token as HTTP-only cookie
-        resp.set_cookie(
-            'access_token_cookie', 
-            access_token, 
-            httponly=True, 
-            secure=True,  # Must be True for SameSite=None to work
-            samesite='None',  # Required for cross-site requests
-            path='/'
-        )
-        
-        return resp, 200
+        """Handle token refresh requests"""
+        if request.method == 'OPTIONS':
+            response = make_response()
+            response.headers.add('Access-Control-Allow-Methods', 'POST, OPTIONS')
+            response.headers.add('Access-Control-Allow-Headers', 'Content-Type')
+            response.headers.add('Access-Control-Allow-Credentials', 'true')
+            frontend_url = os.environ.get('FRONTEND_URL', 'http://localhost:5173')
+            response.headers.add('Access-Control-Allow-Origin', app.config.get('CORS_ORIGINS', frontend_url))
+            return response
+
+        try:
+            # Get refresh token from cookie
+            refresh_cookie = request.cookies.get('refresh_token_cookie')
+            if not refresh_cookie:
+                app.logger.warning("No refresh token cookie found")
+                return jsonify({'error': 'No refresh token cookie'}), 401
+            
+            # Verify refresh token
+            verify_jwt_in_request(refresh=True)
+            
+            # Get current user from token
+            current_user_id = get_jwt_identity()
+            jwt_claims = get_jwt()
+            
+            if not current_user_id:
+                app.logger.warning("No user ID in refresh token")
+                return jsonify({'error': 'Invalid refresh token'}), 401
+            
+            # Check if the user still exists and is active
+            user = User.query.get(current_user_id)
+            if not user:
+                app.logger.warning(f"User {current_user_id} from refresh token not found in database")
+                return jsonify({'error': 'User not found'}), 401
+            
+            # Create new access token
+            access_token = create_access_token(
+                identity=str(current_user_id),
+                additional_claims={
+                    'email': user.email,
+                    'roles': ['admin'] if user.is_admin else ['user'],
+                }
+            )
+            
+            # Create response with token status
+            resp = make_response(jsonify({
+                "success": True,
+                "message": "Token refreshed successfully",
+                "token_status": {
+                    "issued_at": datetime.utcnow().isoformat(),
+                }
+            }))
+            
+            # Set new access token cookie with enhanced security
+            max_age = app.config.get('JWT_ACCESS_TOKEN_EXPIRES', 3600)  # 1 hour default
+            resp.set_cookie(
+                'access_token_cookie', 
+                access_token, 
+                httponly=True, 
+                secure=True,
+                samesite='None',
+                path='/',
+                max_age=max_age
+            )
+            
+            # Add CORS headers
+            frontend_url = os.environ.get('FRONTEND_URL', 'http://localhost:5173')
+            resp.headers.add('Access-Control-Allow-Credentials', 'true')
+            resp.headers.add('Access-Control-Allow-Origin', app.config.get('CORS_ORIGINS', frontend_url))
+            
+            return resp, 200
+            
+        except Exception as e:
+            app.logger.error(f"Error in token refresh: {str(e)}")
+            return jsonify({'error': 'Token refresh failed', 'details': str(e)}), 500
         
     @app.route('/api/logout', methods=['POST'])
     def logout():
@@ -280,8 +362,7 @@ def register_routes(app):
         app.logger.info("All cookies cleared during logout")
         return resp, 200
     
-    # Debug endpoints (only for development)
-    @app.route('/api/test-cookies', methods=['GET', 'OPTIONS'])
+    # Debug endpoints (only for development)    @app.route('/api/test-cookies', methods=['GET', 'OPTIONS'])
     def test_cookies():
         """Test endpoint to diagnose cookie issues"""
         if request.method == 'OPTIONS':
@@ -291,7 +372,8 @@ def register_routes(app):
             # Let the global after_request handler set the credentials header
             # to avoid duplicate headers
             return response
-            response = make_response(jsonify({
+            
+        response = make_response(jsonify({
             'message': 'Testing cookie setting',
             'timestamp': datetime.now().isoformat()
         }))
@@ -536,11 +618,10 @@ def register_routes(app):
                 samesite='None',
                 max_age=3600  # Set to expire in 1 hour
             )
-            
-            # Set another visible cookie with a different method that might be more compatible
+              # Set another visible cookie with a different method that might be more compatible
             # with certain browsers that block third-party cookies
             resp.headers.add('Set-Cookie', 
-                'visible_auth=true; Path=/; Max-Age=3600; SameSite=None')
+                'visible_auth=true; Path=/; Max-Age=3600; SameSite=None; Secure')
             
             # Log cookies being set
             app.logger.info(f"Setting cookies for user {user.id}. Redirecting to: {redirect_url}")
@@ -552,25 +633,78 @@ def register_routes(app):
         except Exception as e:
             app.logger.exception(f"Error in Google OAuth callback handling: {str(e)}")
             return redirect(f"{frontend_url}/login?error=Internal+OAuth+Error")
-    
-    # Quiz endpoints
-    @app.route('/api/quiz', methods=['GET'])
-    def get_quizzes():
-        """Get all quizzes with optional filtering"""
-        category = sanitize_input(request.args.get('category'))
-        difficulty = sanitize_input(request.args.get('difficulty'))
-        search = sanitize_input(request.args.get('search'))
+      # Quiz endpoints
+    @app.route('/api/quiz', methods=['GET', 'POST'])
+    def quiz_handler():
+        """Handle quiz requests"""
+        if request.method == 'GET':
+            try:
+                category = sanitize_input(request.args.get('category'))
+                difficulty = sanitize_input(request.args.get('difficulty'))
+                search = sanitize_input(request.args.get('search'))
+                
+                # Check if client has a valid cached version
+                etag = request.headers.get('If-None-Match')
+                cache_key = f"quizzes:{category}:{difficulty}:{search}"
+                
+                quizzes, error = QuizController.get_all_quizzes(
+                    category=category,
+                    difficulty=difficulty,
+                    search=search
+                )
+                
+                if error:
+                    return jsonify({'error': error}), 400
+                
+                # Generate ETag for the current data
+                current_etag = str(hash(str(quizzes)))
+                
+                # If client's cached version matches current data, return 304 Not Modified
+                if etag and etag == current_etag:
+                    return '', 304
+                
+                # Create response with cache headers
+                resp = make_response(jsonify({'quizzes': quizzes}))
+                resp.headers['Cache-Control'] = 'private, max-age=5'  # Cache for 5 seconds
+                resp.headers['ETag'] = current_etag
+                
+                # Add CORS headers
+                frontend_url = os.environ.get('FRONTEND_URL', 'http://localhost:5173')
+                resp.headers.add('Access-Control-Allow-Origin', app.config.get('CORS_ORIGINS', frontend_url))
+                resp.headers.add('Access-Control-Allow-Credentials', 'true')
+                
+                return resp
+                
+            except Exception as e:
+                app.logger.error(f"Error in get_quizzes: {str(e)}")
+                return jsonify({'error': 'Internal server error'}), 500
         
-        quizzes, error = QuizController.get_all_quizzes(
-            category=category,
-            difficulty=difficulty,
-            search=search
-        )
-        
-        if error:
-            return jsonify({'error': error}), 400
-        
-        return jsonify({'quizzes': quizzes})
+        # For POST requests, require JWT
+        try:
+            verify_jwt_in_request()
+            data = request.get_json()
+            if not data:
+                return jsonify({'error': 'No data provided'}), 400
+            
+            # Add current user ID as author
+            current_user_id = get_jwt_identity()
+            data['author_id'] = current_user_id
+            
+            quiz, error = QuizController.create_quiz(data)
+            if error:
+                return jsonify({'error': error}), 400
+            
+            # Create response with CORS headers
+            resp = make_response(jsonify(quiz))
+            frontend_url = os.environ.get('FRONTEND_URL', 'http://localhost:5173')
+            resp.headers.add('Access-Control-Allow-Origin', app.config.get('CORS_ORIGINS', frontend_url))
+            resp.headers.add('Access-Control-Allow-Credentials', 'true')
+            resp.status_code = 201
+            
+            return resp
+        except Exception as e:
+            app.logger.error(f"Error creating quiz: {str(e)}")
+            return jsonify({'error': 'Internal server error'}), 500
     
     @app.route('/api/quiz/<int:quiz_id>', methods=['GET'])
     def get_quiz(quiz_id):
@@ -583,26 +717,13 @@ def register_routes(app):
             app.logger.error(f"Error getting quiz {quiz_id}: {error}")
             return jsonify({'error': error}), 404 if error == "Quiz not found" else 400
         
-        return jsonify(quiz)
-    
-    @app.route('/api/quiz', methods=['POST'])
-    @jwt_required()
-    def create_quiz():
-        """Create new quiz"""
-        data = request.get_json()
+        # Create response with CORS headers
+        resp = make_response(jsonify(quiz))
+        frontend_url = os.environ.get('FRONTEND_URL', 'http://localhost:5173')
+        resp.headers.add('Access-Control-Allow-Origin', app.config.get('CORS_ORIGINS', frontend_url))
+        resp.headers.add('Access-Control-Allow-Credentials', 'true')
         
-        if not data:
-            return jsonify({'error': 'No data provided'}), 400
-        
-        # Add current user ID as author
-        current_user_id = get_jwt_identity()
-        data['author_id'] = current_user_id
-        
-        quiz, error = QuizController.create_quiz(data)
-        if error:
-            return jsonify({'error': error}), 400
-        
-        return jsonify(quiz), 201
+        return resp
     
     @app.route('/api/quiz/<int:quiz_id>', methods=['PUT'])
     @jwt_required()
