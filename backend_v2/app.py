@@ -42,13 +42,12 @@ def create_app():
     app.config['JWT_SECRET_KEY'] = os.environ.get('JWT_SECRET_KEY', 'UNSAFE_DEV_JWT_KEY_PLEASE_RUN_SETUP_SECURITY')
     app.config["JWT_ACCESS_TOKEN_EXPIRES"] = timedelta(hours=1)
     app.config["JWT_REFRESH_TOKEN_EXPIRES"] = timedelta(days=30)
-    
-    # Configure JWT cookies
+      # Configure JWT cookies
     app.config["JWT_TOKEN_LOCATION"] = ["cookies"]
     
-    # Determine if we're in production for cookie security
+    # Determine if we're in production for cookie security settings
     is_production = os.environ.get('FLASK_ENV') == 'production'
-    app.config["JWT_COOKIE_SECURE"] = is_production  # Secure in production with HTTPS
+    app.config["JWT_COOKIE_SECURE"] = True  # Always secure for SameSite=None to work
     app.config["JWT_COOKIE_CSRF_PROTECT"] = is_production  # Enable in production
     app.config["JWT_COOKIE_SAMESITE"] = "None"  # Required for cross-site requests
     
@@ -104,12 +103,12 @@ def create_app():
             if 'access_token_cookie' in header or 'refresh_token_cookie' in header:
                 # Parse the cookie into parts
                 parts = header.split(';')
-                base = parts[0]  # The name=value part
+                base = parts[0]  # The name=value part                
                 attributes = {
                     'Path': '/',
                     'SameSite': 'None',  # Required for cross-site requests
                     'HttpOnly': True,    # Security: no JS access to cookie
-                    'Secure': is_production  # Only set Secure in production with HTTPS
+                    'Secure': True       # Must be True for SameSite=None to work
                 }
                 
                 # Keep any existing attributes that we're not explicitly setting

@@ -155,14 +155,12 @@ def register_routes(app):
             # Create response with properly structured user data
             user_data = user.to_dict()
             app.logger.info(f"User data structure after registration: {user_data}")
-            resp = make_response(jsonify(user_data))
-
-            # Set access token as HTTP-only cookie
+            resp = make_response(jsonify(user_data))            # Set access token as HTTP-only cookie
             resp.set_cookie(
                 'access_token_cookie', 
                 access_token, 
                 httponly=True, 
-                secure=False,  # Set to True in production with HTTPS
+                secure=True,  # Must be True for SameSite=None to work
                 samesite='None'  # Required for cross-site requests
             )
             
@@ -171,7 +169,7 @@ def register_routes(app):
                 'refresh_token_cookie', 
                 refresh_token, 
                 httponly=True, 
-                secure=False,  # Set to True in production with HTTPS
+                secure=True,  # Must be True for SameSite=None to work
                 samesite='None'  # Required for cross-site requests
             )
             
@@ -204,24 +202,24 @@ def register_routes(app):
             # Create response with properly structured user data
             user_data = user.to_dict()
             app.logger.info(f"User data being returned: {user_data}")
-            resp = jsonify(user_data=user_data)
-
-            # Set access token as HTTP-only cookie
+            resp = jsonify(user_data=user_data)            # Set access token as HTTP-only cookie            
             resp.set_cookie(
                 'access_token_cookie', 
                 access_token, 
                 httponly=True, 
-                secure=False,  # Set to True in production with HTTPS
-                samesite='None'  # Required for cross-site requests
+                secure=True,  # Must be True for SameSite=None to work
+                samesite='None',  # Required for cross-site requests
+                path='/'
             )
             
-            # Set refresh token as HTTP-only cookie
+            # Set refresh token as HTTP-only cookie            
             resp.set_cookie(
                 'refresh_token_cookie', 
                 refresh_token, 
                 httponly=True, 
-                secure=False,  # Set to True in production with HTTPS
-                samesite='None'  # Required for cross-site requests
+                secure=True,  # Must be True for SameSite=None to work
+                samesite='None',  # Required for cross-site requests
+                path='/'
             )
             
             # Add a visible cookie for frontend detection
@@ -229,9 +227,10 @@ def register_routes(app):
                 'auth_success', 
                 'true', 
                 httponly=False,
-                secure=False,
+                secure=True,  # Must be True for SameSite=None to work
                 samesite='None',
-                max_age=3600
+                max_age=3600,
+                path='/'
             )
             
             app.logger.info(f"Login successful for user: {user.email}")
@@ -246,33 +245,33 @@ def register_routes(app):
         """Refresh access token using refresh token"""
         current_user_id = get_jwt_identity()
         access_token = create_access_token(identity=str(current_user_id))
-        
-        # Create response
+          # Create response
         resp = make_response(jsonify({'message': 'Token refreshed successfully'}))
-
-        # Set new access token as HTTP-only cookie
+          # Set new access token as HTTP-only cookie
         resp.set_cookie(
             'access_token_cookie', 
             access_token, 
             httponly=True, 
-            secure=False,  # Set to True in production with HTTPS
-            samesite='None'  # Required for cross-site requests
+            secure=True,  # Must be True for SameSite=None to work
+            samesite='None',  # Required for cross-site requests
+            path='/'
         )
         
-        return resp, 200    @app.route('/api/logout', methods=['POST'])
+        return resp, 200
+        
+    @app.route('/api/logout', methods=['POST'])
     def logout():
         """Logout user by clearing cookies"""
         resp = make_response(jsonify({'message': 'Logged out successfully'}))
-        
-        # Clear JWT cookies (HttpOnly)
-        resp.delete_cookie('access_token_cookie', path='/', domain=None)
-        resp.delete_cookie('refresh_token_cookie', path='/', domain=None)
+          # Clear JWT cookies (HttpOnly)
+        resp.delete_cookie('access_token_cookie', path='/', domain=None, samesite='None')
+        resp.delete_cookie('refresh_token_cookie', path='/', domain=None, samesite='None')
         
         # Clear client-visible cookies
-        resp.delete_cookie('auth_success', path='/', domain=None)
-        resp.delete_cookie('visible_auth', path='/', domain=None)
-        resp.delete_cookie('test_visible_cookie', path='/', domain=None)
-        resp.delete_cookie('js_test_cookie', path='/', domain=None)
+        resp.delete_cookie('auth_success', path='/', domain=None, samesite='None')
+        resp.delete_cookie('visible_auth', path='/', domain=None, samesite='None')
+        resp.delete_cookie('test_visible_cookie', path='/', domain=None, samesite='None')
+        resp.delete_cookie('js_test_cookie', path='/', domain=None, samesite='None')
         
         # Set explicit header to clear cookies
         resp.headers.add('Set-Cookie', 'auth_success=; Path=/; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT;')
@@ -299,10 +298,9 @@ def register_routes(app):
         
         # Set a test cookie
         response.set_cookie(
-            'test_cookie', 
-            'test_value', 
+            'test_cookie',            'test_value', 
             httponly=True, 
-            secure=False,  # Set to True in production with HTTPS
+            secure=True,  # Must be True for SameSite=None to work
             samesite='None',  # Required for cross-site requests
             path='/'
         )
@@ -312,7 +310,7 @@ def register_routes(app):
             'test_visible_cookie', 
             'frontend_visible',
             httponly=False,
-            secure=False,
+            secure=True,  # Must be True for SameSite=None to work
             samesite='None',
             path='/'
         )
@@ -386,13 +384,12 @@ def register_routes(app):
             'message': 'Client-visible cookie set',
             'timestamp': datetime.now().isoformat()
         }))
-        
-        # Set a visible cookie with appropriate attributes
+          # Set a visible cookie with appropriate attributes
         response.set_cookie(
             'client_visible_cookie', 
             f'set_by_server_{datetime.now().second}',
             httponly=False,  # Crucial - this makes it visible to JavaScript
-            secure=False,    # Set to True if using HTTPS
+            secure=True,     # Must be True for SameSite=None to work
             samesite='None', # Required for cross-site requests
             path='/',
             max_age=3600     # 1 hour expiry
@@ -403,7 +400,7 @@ def register_routes(app):
             'auth_success', 
             'true', 
             httponly=False,  # Must be visible to client-side JavaScript
-            secure=False,    # Set to True if using HTTPS
+            secure=True,     # Must be True for SameSite=None to work
             samesite='None', # Required for cross-site requests
             path='/',
             max_age=3600     # 1 hour expiry
@@ -456,14 +453,13 @@ def register_routes(app):
             'error': error_msg,
             'cookies': cookie_info,
             'headers': {k: v for k, v in request.headers.items() if k.lower() != 'cookie'}
-        }))
-          # Set a visible cookie for the frontend to detect
+        }))          # Set a visible cookie for the frontend to detect
         response.set_cookie(
             'auth_success', 
             'true', 
             httponly=False, 
             path='/',
-            secure=False,
+            secure=True,     # Must be True for SameSite=None to work
             samesite='None',
             max_age=3600  # Set cookie to expire in 1 hour
         )
@@ -473,7 +469,7 @@ def register_routes(app):
             'test_visible_cookie', 
             f'frontendvisible_{datetime.now().second}',
             httponly=False,
-            secure=False,
+            secure=True,     # Must be True for SameSite=None to work
             samesite='None',
             path='/'
         )
@@ -512,13 +508,13 @@ def register_routes(app):
             redirect_url = f"{frontend_url}/oauth-callback"
             resp = make_response(redirect(redirect_url))
             
-            # Set access token cookie with all necessary attributes directly
+            # Set access token cookie with all necessary attributes directly            
             resp.set_cookie(
                 'access_token_cookie', 
                 access_token, 
                 httponly=True, 
                 path='/',
-                secure=False,  # Set to True in production with HTTPS
+                secure=True,  # Must be True for SameSite=None to work
                 samesite='None'  # Required for cross-site requests
             )
             
@@ -528,7 +524,7 @@ def register_routes(app):
                 refresh_token, 
                 httponly=True, 
                 path='/',
-                secure=False,  # Set to True in production with HTTPS
+                secure=True,  # Must be True for SameSite=None to work
                 samesite='None'  # Required for cross-site requests
             )              # Add a non-httpOnly cookie to help the frontend detect successful auth
             resp.set_cookie(
@@ -536,7 +532,7 @@ def register_routes(app):
                 'true', 
                 httponly=False, 
                 path='/',
-                secure=False,
+                secure=True,  # Must be True for SameSite=None to work
                 samesite='None',
                 max_age=3600  # Set to expire in 1 hour
             )
