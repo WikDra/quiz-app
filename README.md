@@ -21,7 +21,7 @@ quiz-app/
 │   ├── styles/          # Pliki CSS
 │   └── utils/           # Funkcje i stałe pomocnicze
 ├── public/              # Pliki statyczne
-├── backend_v2/          # Kod źródłowy backendu (Flask)
+├── backend/          # Kod źródłowy backendu (Flask)
 │   ├── models/          # Modele danych (SQLAlchemy)
 │   │   ├── quiz.py     # Model quizu
 │   │   └── user.py     # Model użytkownika
@@ -73,7 +73,7 @@ Szczegółowe instrukcje konfiguracji OAuth znajdują się w pliku [OAUTH_SETUP.
 npm install
 
 # Backend
-cd backend_v2
+cd backend
 pip install -r requirements.txt
 ```
 

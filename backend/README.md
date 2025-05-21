@@ -5,7 +5,7 @@ This is a rewritten version of the Quiz App backend with improved OAuth and CORS
 ## Project Structure
 
 ```
-backend_v2/
+backend/
 ├── app.py             # Main application file
 ├── run.py             # Runner script
 ├── .env               # Environment variables (contains secrets)

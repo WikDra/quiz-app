@@ -7,7 +7,7 @@
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "server": "cd backend_v2 && python run.py",
+    "server": "cd backend && python run.py",
     "frontend": "vite",
     "start": "npm run dev"
   },
