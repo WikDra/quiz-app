@@ -18,6 +18,7 @@ from flask_jwt_extended import (
 from controllers.quiz_controller import QuizController
 from controllers.user_controller import UserController
 from controllers.oauth_controller import OAuthController
+from controllers.stripe_controller import register_stripe_routes # Import the registration function
 from models.user import User
 from utils.helpers import admin_required, sanitize_input
 
@@ -563,6 +564,7 @@ def register_routes(app):
     def login_with_google():
         """Initiate Google OAuth login process"""
         return OAuthController.login_with_google()
+
     @app.route('/api/authorize/google')
     def authorize_google():
         """Handle callback after Google authorization"""
@@ -581,7 +583,8 @@ def register_routes(app):
                 error_query = f"?error={error_message}"
                 app.logger.error(f"Redirecting to frontend with error: {error_message}")
                 return redirect(f"{frontend_url}/login{error_query}")
-              # Create JWT tokens like normal login
+
+            # Create JWT tokens like normal login
             access_token = create_access_token(identity=str(user.id))
             refresh_token = create_refresh_token(identity=str(user.id))
             app.logger.info(f"Created tokens for OAuth user {user.email}")
@@ -608,7 +611,9 @@ def register_routes(app):
                 path='/',
                 secure=True,  # Must be True for SameSite=None to work
                 samesite='None'  # Required for cross-site requests
-            )              # Add a non-httpOnly cookie to help the frontend detect successful auth
+            )
+
+            # Add a non-httpOnly cookie to help the frontend detect successful auth
             resp.set_cookie(
                 'auth_success', 
                 'true', 
@@ -618,7 +623,8 @@ def register_routes(app):
                 samesite='None',
                 max_age=3600  # Set to expire in 1 hour
             )
-              # Set another visible cookie with a different method that might be more compatible
+
+            # Set another visible cookie with a different method that might be more compatible
             # with certain browsers that block third-party cookies
             resp.headers.add('Set-Cookie', 
                 'visible_auth=true; Path=/; Max-Age=3600; SameSite=None; Secure')
@@ -633,7 +639,19 @@ def register_routes(app):
         except Exception as e:
             app.logger.exception(f"Error in Google OAuth callback handling: {str(e)}")
             return redirect(f"{frontend_url}/login?error=Internal+OAuth+Error")
-      # Quiz endpoints
+
+    # Stripe Endpoints are now registered via register_stripe_routes
+    # @app.route('/api/stripe/create-checkout-session', methods=['POST'])
+    # @jwt_required()
+    # def create_checkout_session_route():
+    #     return StripeController.create_checkout_session()
+
+    # @app.route('/api/stripe/webhook', methods=['POST'])
+    # def stripe_webhook_route():
+    #     return StripeController.handle_webhook()
+    register_stripe_routes(app) # Call the function to register Stripe routes
+
+    # Quiz endpoints
     @app.route('/api/quiz', methods=['GET', 'POST'])
     def quiz_handler():
         """Handle quiz requests"""

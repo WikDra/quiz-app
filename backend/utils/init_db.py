@@ -39,6 +39,12 @@ def init_database():
             logger.error("'users' table was not created!")
         else:
             logger.info("'users' table exists.")
+            # Verify 'has_premium_access' column in 'users' table
+            columns = [col['name'] for col in inspector.get_columns('users')]
+            if 'has_premium_access' in columns:
+                logger.info("'has_premium_access' column exists in 'users' table.")
+            else:
+                logger.error("'has_premium_access' column DOES NOT exist in 'users' table!")
             
         if 'quizzes' not in tables:
             logger.error("'quizzes' table was not created!")

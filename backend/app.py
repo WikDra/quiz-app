@@ -10,6 +10,7 @@ from flask_cors import CORS
 from flask_jwt_extended import JWTManager
 from flask_bcrypt import Bcrypt
 from dotenv import load_dotenv
+import stripe # Add Stripe import
 
 # Import models and controllers
 from models import db
@@ -55,6 +56,11 @@ def create_app():
     app.config["JWT_DECODE_ALGORITHMS"] = ["HS256"]  # Allowed algorithms for token verification
     app.config["JWT_PRIVATE_CLAIMS_PREFIX"] = "quiz_"  # Prefix for custom claims
     
+    # Stripe configuration
+    stripe.api_key = os.environ.get('STRIPE_SECRET_KEY')
+    app.config['STRIPE_PUBLISHABLE_KEY'] = os.environ.get('STRIPE_PUBLISHABLE_KEY') # Though primarily for frontend, can be useful here
+    app.config['STRIPE_WEBHOOK_SECRET'] = os.environ.get('STRIPE_WEBHOOK_SECRET')
+
     # Determine if we're in production for cookie security settings
     is_production = os.environ.get('FLASK_ENV') == 'production'
     app.config["JWT_COOKIE_SECURE"] = True  # Always secure for SameSite=None to work

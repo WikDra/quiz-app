@@ -10,6 +10,7 @@ import {
 import { useAuth } from '../context/AuthContext';
 import { QUIZ_CATEGORIES, DIFFICULTY_MAP } from '../utils/constants';
 import '../styles/HomePage.css';
+import StripeCheckout from '../components/StripeCheckout'; // Import StripeCheckout
 
 // Komponent powiadomień
 const NotificationsDropdown = memo(({ notifications, onNotificationClick }) => (
@@ -311,7 +312,8 @@ const HomePage = () => {
   const { user, logout, verifyAuthState } = useAuth();
   const { quizzes, deleteQuiz, loading, error, refreshQuizzes, filterQuizzes } = useQuiz();
   const navigate = useNavigate();
-  
+  const [showPremiumModal, setShowPremiumModal] = React.useState(false); // State for premium modal
+
   // Guard against missing user or invalid auth
   useEffect(() => {
     async function checkAuth() {
@@ -474,6 +476,7 @@ const HomePage = () => {
     e.stopPropagation();
     navigate('/create-quiz', { state: { quiz } });
   }, [navigate]);
+
   const toggleUserMenu = useCallback(() => {
     setShowUserMenu(prev => !prev);
   }, []);
@@ -487,6 +490,13 @@ const HomePage = () => {
     logout();
     navigate('/');
   }, [logout, navigate]);
+
+  const handleGoPremium = () => {
+    // Option 1: Navigate to a dedicated premium page
+    navigate('/premium'); 
+    // Option 2: Show a modal (requires StripeCheckout to be rendered conditionally)
+    // setShowPremiumModal(true);
+  };
 
   // Wyświetlanie ładowania/błędu
   if (loading) {
@@ -546,6 +556,11 @@ const HomePage = () => {
                   {filteredQuizzes.length} {filteredQuizzes.length === 1 ? 'quiz' : 'quizy'}
                 </p>
               </div>
+              {!user?.has_premium_access && (
+                <button className="go-premium-button" onClick={handleGoPremium}>
+                  Przejdź na Premium
+                </button>
+              )}
               <button className="create-quiz-button" onClick={handleCreateQuiz}>
                 <FontAwesomeIcon icon={faPlus} /> Stwórz quiz
               </button>
@@ -583,6 +598,17 @@ const HomePage = () => {
           <RemindersSection reminders={reminders} />
         </div>
       </div>
+
+      {/* Modal for Premium Checkout - Alternative to dedicated page */}
+      {/* {showPremiumModal && (
+        <div className=\"modal-overlay\">
+          <div className=\"modal-content\">
+            <button onClick={() => setShowPremiumModal(false)} className=\"close-modal\">&times;</button>
+            <StripeCheckout priceId={import.meta.env.VITE_STRIPE_PREMIUM_PLAN_ID || 'YOUR_PREMIUM_PRICE_ID'} />
+          </div>
+        </div>
+      )} */}
+
     </div>
   );
 };

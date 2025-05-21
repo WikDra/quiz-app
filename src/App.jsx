@@ -21,6 +21,7 @@ const CreateQuiz = lazy(() => import('./pages/CreateQuiz'));
 const SolveQuiz = lazy(() => import('./pages/SolveQuiz'));
 const UserSettings = lazy(() => import('./pages/UserSettings'));
 const OAuthCallback = lazy(() => import('./pages/OAuthCallback'));
+const PremiumPage = lazy(() => import('./pages/PremiumPage'));
 
 // Komponent ładowania dla Suspense
 const LoadingFallback = memo(() => (
@@ -141,6 +142,11 @@ const AppRoutes = memo(() => {
             </PrivateRoute>
           } />
           <Route path="/oauth-callback" element={<OAuthCallback />} />
+          <Route path="/premium" element={
+            <PrivateRoute>
+              <PremiumPage />
+            </PrivateRoute>
+          } />
           <Route path="/" element={user ? <Navigate to="/home" /> : <LandingPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

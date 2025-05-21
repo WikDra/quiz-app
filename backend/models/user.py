@@ -17,6 +17,7 @@ class User(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     social_id = db.Column(db.String(100), nullable=True, unique=True)
     social_provider = db.Column(db.String(20), nullable=True)
+    has_premium_access = db.Column(db.Boolean, default=False) # Add premium access field
 
     def set_password(self, password):
         """Set password hash"""
@@ -39,6 +40,7 @@ class User(db.Model):
             'level': 'Początkujący',  # Default level
             'is_admin': self.is_admin,
             'created_at': self.created_at.isoformat() if self.created_at else None,
+            'has_premium_access': self.has_premium_access, # Include in dict
             'stats': {
                 'quizzes': 0,
                 'bestTime': '0min',

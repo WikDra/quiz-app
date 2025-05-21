@@ -1,0 +1,117 @@
+.premium-page-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 20px;
+  font-family: 'Arial', sans-serif;
+  background-color: #f9f9f9; /* Light gray background */
+  min-height: 100vh;
+}
+
+.premium-content {
+  background-color: #ffffff; /* White content background */
+  padding: 30px;
+  border-radius: 8px;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1); /* Subtle shadow */
+  max-width: 700px;
+  width: 100%;
+  text-align: center;
+}
+
+.premium-content h1 {
+  color: #333;
+  margin-bottom: 15px;
+}
+
+.premium-content > p {
+  color: #555;
+  font-size: 1.1em;
+  margin-bottom: 25px;
+  line-height: 1.6;
+}
+
+.premium-features {
+  margin-bottom: 30px;
+  text-align: left;
+}
+
+.premium-features h2 {
+  color: #444;
+  margin-bottom: 15px;
+  text-align: center;
+  font-size: 1.5em;
+}
+
+.premium-features ul {
+  list-style: none;
+  padding: 0;
+}
+
+.premium-features li {
+  color: #333;
+  font-size: 1em;
+  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+}
+
+.premium-features li svg, /* For FontAwesome or other SVG icons */
+.premium-features li::before /* For text-based checkmarks like '✅' */ {
+  color: #28a745; /* Green checkmark */
+  margin-right: 10px;
+  font-size: 1.2em; /* Adjust if using text emoji */
+}
+
+.checkout-section {
+  margin-top: 20px;
+  padding: 20px;
+  background-color: #f0f8ff; /* Light blue background for checkout */
+  border-radius: 6px;
+}
+
+.checkout-section h2 {
+  color: #333;
+  margin-bottom: 20px;
+}
+
+.terms-info {
+  margin-top: 25px;
+  font-size: 0.9em;
+  color: #777;
+}
+
+.error-message {
+  color: #d9534f; /* Bootstrap danger color */
+  background-color: #f2dede;
+  border: 1px solid #ebccd1;
+  padding: 15px;
+  border-radius: 4px;
+  margin-top: 20px;
+}
+
+/* Styling for the StripeCheckout component button, if needed */
+/* Ensure this selector is specific enough if StripeCheckout has its own button styles */
+.checkout-section .StripeCheckout button, 
+.checkout-section button[type="submit"] {
+  background-color: #007bff; /* Primary blue */
+  color: white;
+  padding: 12px 25px;
+  border: none;
+  border-radius: 5px;
+  font-size: 1.1em;
+  cursor: pointer;
+  transition: background-color 0.3s ease;
+  width: auto; /* Or 100% if you want it full-width within its container */
+  display: inline-block;
+}
+
+.checkout-section .StripeCheckout button:hover,
+.checkout-section button[type="submit"]:hover {
+  background-color: #0056b3; /* Darker blue on hover */
+}
+
+.checkout-section .StripeCheckout button:disabled,
+.checkout-section button[type="submit"]:disabled {
+  background-color: #cccccc;
+  cursor: not-allowed;
+}
