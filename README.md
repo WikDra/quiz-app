@@ -2,121 +2,109 @@
 
 Aplikacja do tworzenia i rozwiązywania quizów zbudowana z wykorzystaniem React.js (frontend) i Flask (backend). System umożliwia użytkownikom tworzenie własnych quizów, rozwiązywanie ich z liczeniem punktów i pomiarem czasu, oraz zarządzanie swoim profilem.
 
+## Funkcjonalności
+
+- Tworzenie i edycja quizów
+- Rozwiązywanie quizów z pomiarem czasu
+- System autentykacji (JWT) z logowaniem przez email lub Google OAuth
+- Zarządzanie profilem użytkownika
+- Śledzenie postępów i statystyk
+
 ## Struktura projektu
 
 ```
 quiz-app/
 ├── src/                  # Kod źródłowy frontendu (React.js)
 │   ├── components/       # Komponenty współdzielone
-│   ├── context/          # Konteksty Reacta (Auth, Quiz)
-│   ├── pages/            # Komponenty stron
-│   ├── styles/           # Pliki CSS
-│   └── utils/            # Funkcje i stałe pomocnicze
-├── public/               # Pliki statyczne
-├── backend/              # Kod źródłowy backendu (Flask)
-│   ├── models/           # Modele danych (SQLAlchemy)
-│   ├── controllers/      # Kontrolery MVC
-│   └── utils/            # Funkcje pomocnicze
+│   ├── context/         # Konteksty Reacta (Auth, Quiz)
+│   ├── pages/           # Komponenty stron
+│   ├── styles/          # Pliki CSS
+│   └── utils/           # Funkcje i stałe pomocnicze
+├── public/              # Pliki statyczne
+├── backend_v2/          # Kod źródłowy backendu (Flask)
+│   ├── models/          # Modele danych (SQLAlchemy)
+│   │   ├── quiz.py     # Model quizu
+│   │   └── user.py     # Model użytkownika
+│   ├── controllers/     # Kontrolery MVC
+│   │   ├── oauth_controller.py    # Logika OAuth
+│   │   ├── quiz_controller.py     # Logika quizów
+│   │   └── user_controller.py     # Logika użytkowników
+│   ├── utils/          # Funkcje pomocnicze
+│   │   ├── helpers.py          # Funkcje pomocnicze
+│   │   ├── init_db.py         # Inicjalizacja bazy danych
+│   │   ├── setup_security.py  # Konfiguracja bezpieczeństwa
+│   │   └── token_utils.py     # Zarządzanie JWT
+│   ├── routes.py      # Routing API
+│   └── app.py         # Główna aplikacja Flask
 ```
 
 ## Technologie
 
-### Frontend:
-- React.js 18
-- Vite (narzędzie buildowania)
-- React Router dla nawigacji
-- Context API do zarządzania stanem
-- CSS z własnymi stylami
+- Frontend:
+  - React.js
+  - Vite
+  - Context API do zarządzania stanem
+  - React Router do nawigacji
 
-### Backend:
-- Flask 2.3.2
-- SQLAlchemy (ORM)
-- SQLite (baza danych)
-- Flask-Bcrypt (bezpieczne przechowywanie haseł)
-- Flask-CORS (obsługa Cross-Origin Requests)
-- Flask-JWT-Extended (uwierzytelnianie JWT)
-- Flask-Limiter (ochrona przed atakami brute-force)
-- Authlib (integracja OAuth2 z Google)
+- Backend:
+  - Flask (Python)
+  - SQLAlchemy ORM
+  - JWT do autentykacji
+  - OAuth 2.0 (Google Sign-In)
 
-## Instalacja i uruchomienie
+## System Autentykacji
 
-### Wymagania wstępne:
-- Node.js (wersja 16+)
-- Python (wersja 3.9+)
+### JWT Token Management
 
-### Instalacja zależności:
+- Automatyczne odświeżanie tokenów przed wygaśnięciem
+- System rotacji tokenów refresh dla zwiększenia bezpieczeństwa
+- Bezpieczne przechowywanie tokenów w HttpOnly cookies
+- Obsługa CORS z odpowiednimi nagłówkami bezpieczeństwa
 
+### OAuth Integration
+
+Szczegółowe instrukcje konfiguracji OAuth znajdują się w pliku [OAUTH_SETUP.md](OAUTH_SETUP.md).
+
+## Uruchomienie projektu
+
+1. Instalacja zależności:
 ```bash
-# Zależności frontendu
+# Frontend
 npm install
 
-# Zależności backendu
-cd backend
+# Backend
+cd backend_v2
 pip install -r requirements.txt
 ```
 
-### Konfiguracja:
+2. Konfiguracja:
+- Skopiuj `.env.example` do `.env` i uzupełnij zmienne środowiskowe
+- Skonfiguruj OAuth zgodnie z instrukcją w OAUTH_SETUP.md
 
-1. Utwórz plik `.env` w folderze `backend/` na podstawie pliku `.env.example`:
-
+3. Uruchomienie:
 ```bash
-cd backend
-cp .env.example .env
-```
+# Development
+npm run dev  # uruchamia zarówno frontend jak i backend
 
-2. Edytuj plik `.env` i ustaw odpowiednie wartości dla zmiennych środowiskowych.
-
-3. Aby skonfigurować logowanie przez Google OAuth, postępuj zgodnie z instrukcjami w pliku [OAUTH_SETUP.md](OAUTH_SETUP.md).
-
-### Uruchomienie:
-
-```bash
-# Uruchamia zarówno frontend jak i backend
-npm run dev
-
-# Uruchomienie tylko backendu
-cd backend
-python run.py
-
-# Uruchomienie tylko frontendu
-npm run dev -- --host
-```
-
-### Budowanie aplikacji produkcyjnej:
-
-```bash
+# Produkcja
 npm run build
+npm run preview
 ```
 
-## Funkcje aplikacji
+## Bezpieczeństwo
 
-### Użytkownicy:
-- Rejestracja i logowanie użytkowników
-- Bezpieczne przechowywanie haseł (bcrypt)
-- Profil użytkownika z awatarem (integracja z Gravatar)
-- Zarządzanie ustawieniami konta
-
-### Quizy:
-- Przeglądanie dostępnych quizów
-- Tworzenie własnych quizów z wieloma kategoriami
-- Edycja i usuwanie własnych quizów
-- Rozwiązywanie quizów z pomiarem czasu
-- Dynamiczne liczenie punktów w zależności od czasu odpowiedzi
-
-### System:
-- Implementacja wzorca MVC
-- RESTowe API
-- Responsywny interfejs użytkownika
-- Zarządzanie stanem aplikacji przez konteksty React
+- Wszystkie tokeny JWT są przechowywane w bezpiecznych HttpOnly cookies
+- Implementacja CSRF protection
+- Sanityzacja danych wejściowych
+- Bezpieczne hasła z użyciem bcrypt
+- Rotacja tokenów refresh dla lepszego bezpieczeństwa
+- Rate limiting dla endpointów logowania
+- Walidacja CORS z precyzyjną konfiguracją
 
 ## Rozwój projektu
 
-### Planowane funkcjonalności:
-- Integracja z systemami social media do logowania
-- Implementacja systemu płatności
-- Rozbudowa statystyk użytkowników
-- Wdrożenie testów jednostkowych i integracyjnych
-
-## Autorzy
-
-Projekt powstał w ramach projektu Backend development.
+Aby rozpocząć pracę nad projektem:
+1. Sklonuj repozytorium
+2. Zainstaluj zależności
+3. Skonfiguruj środowisko według instrukcji powyżej
+4. Uruchom testy przed wprowadzeniem zmian
