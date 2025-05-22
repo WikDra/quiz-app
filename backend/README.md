@@ -1,4 +1,4 @@
-# Quiz App Backend v2
+# Quiz App Backend
 
 This is a rewritten version of the Quiz App backend with improved OAuth and CORS handling.
 

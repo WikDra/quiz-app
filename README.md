@@ -9,6 +9,21 @@ Aplikacja do tworzenia i rozwiązywania quizów zbudowana z wykorzystaniem React
 - System autentykacji (JWT) z logowaniem przez email lub Google OAuth
 - Zarządzanie profilem użytkownika
 - Śledzenie postępów i statystyk
+- Obsługa płatności premium z wykorzystaniem Stripe
+
+## Integracja z Stripe
+
+Aplikacja wykorzystuje Stripe do obsługi płatności subskrypcji premium. Szczegółowe instrukcje konfiguracji:
+
+- [Instrukcja konfiguracji Stripe](STRIPE_SETUP.md)
+- [Podsumowanie zmian Stripe](STRIPE_UPDATES.md)
+
+Aby poprawnie skonfigurować Stripe:
+
+1. Utwórz konto na [stripe.com](https://stripe.com)
+2. Zdobądź klucze API i ustaw je w pliku `.env`
+3. Uruchom `python -m backend.utils.setup_security` aby zweryfikować konfigurację
+4. Dla webhooków: uruchom `python -m backend.utils.update_webhook_secret`
 
 ## Struktura projektu
 

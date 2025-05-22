@@ -19,6 +19,7 @@ from controllers.quiz_controller import QuizController
 from controllers.user_controller import UserController
 from controllers.oauth_controller import OAuthController
 from controllers.stripe_controller import register_stripe_routes # Import the registration function
+from models import db
 from models.user import User
 from utils.helpers import admin_required, sanitize_input
 
@@ -651,6 +652,84 @@ def register_routes(app):
     #     return StripeController.handle_webhook()
     register_stripe_routes(app) # Call the function to register Stripe routes
 
+    # Add a test endpoint for manually updating premium status
+    @app.route('/api/test/update_premium', methods=['POST'])
+    @jwt_required()
+    def test_update_premium():
+        """Endpoint for testing premium status update"""
+        try:
+            user_id = get_jwt_identity()
+            user = User.query.get(user_id)
+            
+            if not user:
+                return jsonify({'error': 'User not found'}), 404
+                  # Toggle premium status
+            user.has_premium_access = not user.has_premium_access
+            
+            # Update premium_since when activating premium
+            if user.has_premium_access:
+                user.premium_since = datetime.utcnow()
+            
+            db.session.add(user)
+            db.session.commit()
+            
+            app.logger.info(f"User {user.id} premium status set to {user.has_premium_access}")
+            
+            return jsonify({
+                'success': True, 
+                'user_id': user.id,
+                'has_premium_access': user.has_premium_access,
+                'premium_since': user.premium_since.isoformat() if user.premium_since else None,
+                'message': f"Premium status {'activated' if user.has_premium_access else 'deactivated'}"
+            })
+        
+        except Exception as e:
+            app.logger.error(f"Error updating premium status: {str(e)}")
+            return jsonify({'error': 'Internal server error'}), 500
+            
+    @app.route('/api/test/webhook-simulation', methods=['POST'])
+    def test_webhook_simulation():
+        """Endpoint for simulating Stripe webhook events for testing"""
+        try:
+            data = request.json
+            event_type = data.get('event_type', 'checkout.session.completed')
+            user_id = data.get('user_id')
+            
+            app.logger.info(f"Simulating Stripe webhook event: {event_type} for user: {user_id}")
+            
+            if not user_id:
+                return jsonify({'error': 'user_id is required for webhook simulation'}), 400
+                
+            user = User.query.get(user_id)
+            if not user:
+                return jsonify({'error': f'User with id {user_id} not found'}), 404
+                
+            if event_type == 'checkout.session.completed':                # Simulate successful checkout
+                user.has_premium_access = True
+                if not user.premium_since:
+                    user.premium_since = datetime.utcnow()
+                db.session.add(user)
+                db.session.commit()
+                app.logger.info(f"Simulated successful checkout: User {user.id} premium status set to True")
+                
+            elif event_type == 'customer.subscription.deleted':
+                # Simulate subscription cancellation
+                user.has_premium_access = False
+                db.session.add(user)
+                db.session.commit()
+                app.logger.info(f"Simulated subscription cancellation: User {user.id} premium status set to False")
+                
+            return jsonify({
+                'success': True,
+                'event_processed': event_type,
+                'user_id': user.id,
+                'has_premium_access': user.has_premium_access
+            })
+                
+        except Exception as e:
+            app.logger.error(f"Error in webhook simulation: {str(e)}")
+            return jsonify({'error': 'Internal server error during webhook simulation'}), 500
+            
     # Quiz endpoints
     @app.route('/api/quiz', methods=['GET', 'POST'])
     def quiz_handler():
@@ -878,3 +957,38 @@ def register_routes(app):
                 debug_info['auth']['error'] = 'User ID from token not found in database'
         
         return jsonify(debug_info)
+
+    @app.route('/api/debug/premium', methods=['GET'])
+    @jwt_required()
+    def debug_premium_status():
+        """Debug endpoint to check premium status and configuration"""
+        try:
+            user_id = get_jwt_identity()
+            user = User.query.get(user_id)
+            
+            if not user:
+                return jsonify({'error': 'User not found'}), 404
+                
+            # Check webhook configuration
+            webhook_secret = os.environ.get('STRIPE_WEBHOOK_SECRET')
+            webhook_valid = bool(webhook_secret and webhook_secret.startswith('whsec_') and 
+                                not webhook_secret.endswith('_webhook_secret') and 
+                                webhook_secret != 'whsec_trudny_webhook_secret')
+            
+            return jsonify({
+                'user': {
+                    'id': user.id,
+                    'email': user.email,
+                    'has_premium_access': user.has_premium_access,
+                    'premium_since': user.premium_since.isoformat() if user.premium_since else None,
+                },
+                'stripe_config': {
+                    'webhook_configured': webhook_valid,
+                    'webhook_secret_format': 'valid' if webhook_valid else 'invalid',
+                    'api_keys_configured': bool(os.environ.get('STRIPE_SECRET_KEY') and os.environ.get('STRIPE_PUBLISHABLE_KEY'))
+                }
+            })
+                
+        except Exception as e:
+            app.logger.error(f"Error in debug premium endpoint: {str(e)}")
+            return jsonify({'error': 'Internal server error during debug'}), 500

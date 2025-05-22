@@ -50,7 +50,11 @@ export const AuthProvider = ({ children }) => {
       }
     }
   }, [API_BASE_URL, tokenRefreshTimer]);
-    // Funkcja do sprawdzania, czy użytkownik jest zalogowany poprzez weryfikację JWT
+  
+  // Update ref to point to the latest version of the function
+  logoutRef.current = logout;
+
+  // Funkcja do sprawdzania, czy użytkownik jest zalogowany poprzez weryfikację JWT
   const verifyAuthState = useCallback(async () => {
     const MIN_INTERVAL = 5000; // 5 seconds between checks
     const lastVerifyTime = localStorage.getItem('lastAuthVerifyTime');
@@ -158,6 +162,9 @@ export const AuthProvider = ({ children }) => {
     }
   }, [API_BASE_URL, tokenRefreshTimer]);
 
+  // Update ref to point to the latest version of the function
+  verifyAuthStateRef.current = verifyAuthState;
+
   // Function to refresh token when it's about to expire
   const refreshToken = useCallback(async () => {
     try {
@@ -224,6 +231,10 @@ export const AuthProvider = ({ children }) => {
       return false;
     }
   }, [API_BASE_URL]);
+
+  // Update ref to point to the latest version of the function
+  refreshTokenRef.current = refreshToken;
+
   // Schedule token refresh function with debouncing and error prevention
   const scheduleTokenRefresh = useCallback(() => {
     // Clear any existing timer first
@@ -276,6 +287,10 @@ export const AuthProvider = ({ children }) => {
       console.error('Error in immediate token refresh:', err);
     });
   }, [tokenRefreshTimer]);
+
+  // Update ref to point to the latest version of the function
+  scheduleTokenRefreshRef.current = scheduleTokenRefresh;
+
   // Funkcja do pobierania danych użytkowników
   const fetchUsers = useCallback(async () => {
     // Check if we have recent user data in cache
@@ -459,11 +474,13 @@ export const AuthProvider = ({ children }) => {
         };
 
         setUser(userData);
-        localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(userData));
-        localStorage.setItem('lastAuthUpdate', now.toString());
+        localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(userData));        localStorage.setItem('lastAuthUpdate', now.toString());
         return true;
       } else {
         console.error('Failed to fetch user profile:', await response.text());
+        // Explicitly clear user state when API request fails
+        setUser(null);
+        localStorage.removeItem(STORAGE_KEYS.USER);
       }
     } catch (err) {
       console.error('Failed to update auth state from token:', err);
@@ -479,8 +496,7 @@ export const AuthProvider = ({ children }) => {
       }
     }
     return false;
-  }, [API_BASE_URL]);
-  // Pierwsze ładowanie i okresowe sprawdzanie stanu uwierzytelniania
+  }, [API_BASE_URL]);  // Pierwsze ładowanie i okresowe sprawdzanie stanu uwierzytelniania
   useEffect(() => {
     let checkTimer = null;
     const CHECK_INTERVAL = 60000; // Check every minute
@@ -491,6 +507,7 @@ export const AuthProvider = ({ children }) => {
         const isAuthenticated = await verifyAuthState();
         
         if (!isAuthenticated) {
+          setUser(null); // Explicitly set user to null if not authenticated
           if (localStorage.getItem(STORAGE_KEYS.USER)) {
             console.log('Wykryto dane użytkownika w localStorage, ale token JWT jest nieważny. Usuwanie danych...');
             localStorage.removeItem(STORAGE_KEYS.USER);
@@ -498,6 +515,8 @@ export const AuthProvider = ({ children }) => {
         }
       } catch (err) {
         console.error('Błąd podczas początkowego sprawdzania uwierzytelniania:', err);
+        setUser(null); // Also ensure user is null on error
+        localStorage.removeItem(STORAGE_KEYS.USER);
       } finally {
         setLoading(false);
       }
@@ -506,23 +525,28 @@ export const AuthProvider = ({ children }) => {
     // Initial check
     initialAuthCheck();
 
-    // Set up periodic checks if user is logged in
-    const periodicCheck = () => {
-      if (user) {
-        verifyAuthState().catch(err => {
+    // Clear any previous timer if dependency changes
+    if (checkTimer) {
+      clearInterval(checkTimer);
+      checkTimer = null;
+    }
+
+    // Only set up periodic checks if user is logged in
+    if (user) {
+      checkTimer = setInterval(() => {
+        console.log("AuthContext: Performing periodic auth check...");
+        verifyAuthStateRef.current().catch(err => {
           console.error('Error in periodic auth check:', err);
         });
-      }
-    };
-
-    checkTimer = setInterval(periodicCheck, CHECK_INTERVAL);
+      }, CHECK_INTERVAL);
+    }
     
     return () => {
       if (checkTimer) {
         clearInterval(checkTimer);
       }
     };
-  }, [verifyAuthState, user]);
+  }, [user, verifyAuthState]); // Include verifyAuthState in dependencies
   
   // Zapisywanie użytkowników
   const saveUsers = useCallback(async (updatedUsers) => {

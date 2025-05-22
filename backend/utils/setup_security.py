@@ -74,6 +74,33 @@ def setup_security():
     else:
         print(f"\nUsing existing Google OAuth credentials")
     
+    # Setup Stripe API keys
+    stripe_publishable_key = os.environ.get('STRIPE_PUBLISHABLE_KEY')
+    stripe_secret_key = os.environ.get('STRIPE_SECRET_KEY')
+    stripe_webhook_secret = os.environ.get('STRIPE_WEBHOOK_SECRET')
+    
+    if not stripe_publishable_key or not stripe_secret_key or not stripe_webhook_secret:
+        print("\nStripe API keys not found or incomplete.")
+        print("To set up Stripe payment processing, you need to:")
+        print("1. Create a Stripe account: https://stripe.com")
+        print("2. Get your API keys from the Stripe Dashboard")
+        print("3. Set up a webhook endpoint in Stripe for http://your-domain/api/webhook")
+        print("4. Enter the credentials below:\n")
+        
+        stripe_publishable_key = input("Enter Stripe Publishable Key: ")
+        stripe_secret_key = input("Enter Stripe Secret Key: ")
+        stripe_webhook_secret = input("Enter Stripe Webhook Secret: ")
+        
+        if stripe_publishable_key and stripe_secret_key and stripe_webhook_secret:
+            set_key(dotenv_path, 'STRIPE_PUBLISHABLE_KEY', stripe_publishable_key)
+            set_key(dotenv_path, 'STRIPE_SECRET_KEY', stripe_secret_key)
+            set_key(dotenv_path, 'STRIPE_WEBHOOK_SECRET', stripe_webhook_secret)
+            print("\nStripe API keys saved to .env file")
+        else:
+            print("\nStripe API keys not provided or incomplete. You can set them later in the .env file.")
+    else:
+        print(f"\nUsing existing Stripe API keys")
+    
     print("\nSecurity setup complete. The application is now configured with secure keys.")
 
 if __name__ == "__main__":

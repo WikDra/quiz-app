@@ -13,11 +13,12 @@ class User(db.Model):
     email = db.Column(db.String(100), unique=True, nullable=False)
     password_hash = db.Column(db.String(128), nullable=True)
     avatar_url = db.Column(db.String(255), nullable=True)
-    is_admin = db.Column(db.Boolean, default=False)
+    is_admin = db.Column(db.Boolean, default=False)    
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     social_id = db.Column(db.String(100), nullable=True, unique=True)
     social_provider = db.Column(db.String(20), nullable=True)
     has_premium_access = db.Column(db.Boolean, default=False) # Add premium access field
+    premium_since = db.Column(db.DateTime, nullable=True) # Track when premium was activated
 
     def set_password(self, password):
         """Set password hash"""
@@ -37,10 +38,10 @@ class User(db.Model):
             'fullName': self.username,  # Map username to fullName for frontend compatibility
             'email': self.email,
             'avatar': self.avatar_url or 'https://i.pravatar.cc/150?img=3',  # Default avatar
-            'level': 'Początkujący',  # Default level
-            'is_admin': self.is_admin,
+            'level': 'Początkujący',  # Default level            'is_admin': self.is_admin,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'has_premium_access': self.has_premium_access, # Include in dict
+            'premium_since': self.premium_since.isoformat() if self.premium_since else None,
             'stats': {
                 'quizzes': 0,
                 'bestTime': '0min',

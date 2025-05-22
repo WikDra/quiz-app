@@ -22,6 +22,8 @@ const SolveQuiz = lazy(() => import('./pages/SolveQuiz'));
 const UserSettings = lazy(() => import('./pages/UserSettings'));
 const OAuthCallback = lazy(() => import('./pages/OAuthCallback'));
 const PremiumPage = lazy(() => import('./pages/PremiumPage'));
+const PaymentSuccessPage = lazy(() => import('./pages/PaymentSuccessPage')); 
+const TestPremium = lazy(() => import('./pages/TestPremium')); // Dodaj stronę testową
 
 // Komponent ładowania dla Suspense
 const LoadingFallback = memo(() => (
@@ -147,6 +149,17 @@ const AppRoutes = memo(() => {
               <PremiumPage />
             </PrivateRoute>
           } />
+          <Route path="/payment-success" element={
+            <PrivateRoute>
+              <PaymentSuccessPage />
+            </PrivateRoute>
+          } /> 
+          <Route path="/test-premium" element={
+            <PrivateRoute>
+              <TestPremium />
+            </PrivateRoute>
+          } /> {/* Dodaj nową ścieżkę */}
+
           <Route path="/" element={user ? <Navigate to="/home" /> : <LandingPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
@@ -159,9 +172,10 @@ const AppRoutes = memo(() => {
 const App = memo(() => {  return (
     <AuthProvider>
       <QuizProvider>
-        <Router>          <OnlineStatusHandler />
-          <AuthStateLogger />
+        <Router> {/* Router is here */}
+          <OnlineStatusHandler />
           <AuthVerifier />
+          <AuthStateLogger />
           <AppRoutes />
           {import.meta.env.DEV && <TokenDiagnostics />}
           <DebugAuthState />
