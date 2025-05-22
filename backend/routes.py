@@ -4,13 +4,13 @@ API routes definition for Quiz App
 import os
 import sys
 import traceback
-from datetime import datetime
+from datetime import datetime, timedelta
 from flask import jsonify, request, redirect, make_response
 from flask_jwt_extended import (
     create_access_token, 
     create_refresh_token, 
     get_jwt_identity, 
-    jwt_required, 
+    jwt_required,
     get_jwt,
     verify_jwt_in_request
 )
@@ -20,12 +20,16 @@ from controllers.user_controller import UserController
 from controllers.oauth_controller import OAuthController
 from controllers.stripe_controller import register_stripe_routes # Import the registration function
 from models import db
-from models.user import User
+from models.user import User, InvalidToken
 from utils.helpers import admin_required, sanitize_input
-
+from utils.token_utils import (
+    should_rotate_refresh_token, 
+    create_rotated_refresh_token,
+    invalidate_token
+)
 def register_routes(app):
     """Register API routes in Flask application"""
-    
+
     @app.route('/api/health')
     def health_check():
         """Health check endpoint"""
@@ -168,10 +172,23 @@ def register_routes(app):
         if error:
             return jsonify({'error': error}), 409 if "already exists" in error else 400
             
-        try:            # Create JWT tokens
+        try:            # Create JWT tokens with proper types
             app.logger.info(f"Creating JWT tokens for new user {user.id}")
-            access_token = create_access_token(identity=str(user.id))
-            refresh_token = create_refresh_token(identity=str(user.id))
+            access_token = create_access_token(
+                identity=str(user.id),
+                additional_claims={
+                    'type': 'access',
+                    'email': user.email,
+                    'roles': ['admin'] if user.is_admin else ['user']
+                }
+            )
+            refresh_token = create_refresh_token(
+                identity=str(user.id),
+                additional_claims={
+                    'type': 'refresh',
+                    'refresh_count': 0
+                }
+            )
 
             # Create response with properly structured user data
             user_data = user.to_dict()
@@ -215,11 +232,24 @@ def register_routes(app):
             app.logger.warning(f"Login failed: {error}, status code: {status_code}")
             return jsonify({'error': error}), status_code
             
-        try:            # Create JWT tokens
+        try:            # Create JWT tokens with proper types
             app.logger.info(f"Creating JWT tokens for user {user.id}")
-            access_token = create_access_token(identity=str(user.id))
-            refresh_token = create_refresh_token(identity=str(user.id))
-              # Create response with properly structured user data
+            access_token = create_access_token(
+                identity=str(user.id),
+                additional_claims={
+                    'type': 'access',
+                    'email': user.email,
+                    'roles': ['admin'] if user.is_admin else ['user']
+                }
+            )
+            refresh_token = create_refresh_token(
+                identity=str(user.id),
+                additional_claims={
+                    'type': 'refresh',
+                    'refresh_count': 0
+                }
+            )
+            # Create response with properly structured user data
             user_data = user.to_dict()
             app.logger.info(f"User data being returned: {user_data}")
             resp = jsonify(user_data=user_data)
@@ -288,39 +318,50 @@ def register_routes(app):
             # Verify refresh token
             verify_jwt_in_request(refresh=True)
             
-            # Get current user from token
+            # Get current user and token claims
             current_user_id = get_jwt_identity()
             jwt_claims = get_jwt()
             
-            if not current_user_id:
-                app.logger.warning("No user ID in refresh token")
-                return jsonify({'error': 'Invalid refresh token'}), 401
+            # Verify this is actually a refresh token
+            if jwt_claims.get('type') != 'refresh':
+                app.logger.warning(f"Non-refresh token used for refresh: {jwt_claims.get('type')}")
+                return jsonify({'error': 'Invalid token type'}), 401
             
-            # Check if the user still exists and is active
+            # Check if user still exists and is active
             user = User.query.get(current_user_id)
             if not user:
                 app.logger.warning(f"User {current_user_id} from refresh token not found in database")
                 return jsonify({'error': 'User not found'}), 401
             
-            # Create new access token
+            # Create new access token with additional claims
             access_token = create_access_token(
                 identity=str(current_user_id),
                 additional_claims={
                     'email': user.email,
                     'roles': ['admin'] if user.is_admin else ['user'],
+                    'type': 'access'
                 }
             )
             
-            # Create response with token status
+            # Check if we should rotate the refresh token
+            should_rotate = should_rotate_refresh_token(jwt_claims)
+            if should_rotate:
+                app.logger.info(f"Rotating refresh token for user {current_user_id}")
+                refresh_token = create_rotated_refresh_token(str(current_user_id), jwt_claims)
+            else:
+                refresh_token = None
+            
+            # Create response
             resp = make_response(jsonify({
                 "success": True,
                 "message": "Token refreshed successfully",
                 "token_status": {
                     "issued_at": datetime.utcnow().isoformat(),
+                    "rotated": should_rotate
                 }
             }))
             
-            # Set new access token cookie with enhanced security
+            # Set new access token cookie
             max_age = app.config.get('JWT_ACCESS_TOKEN_EXPIRES', 3600)  # 1 hour default
             resp.set_cookie(
                 'access_token_cookie', 
@@ -332,6 +373,19 @@ def register_routes(app):
                 max_age=max_age
             )
             
+            # Set new refresh token if rotated
+            if refresh_token:
+                max_age = app.config.get('JWT_REFRESH_TOKEN_EXPIRES', 30*24*3600)  # 30 days default
+                resp.set_cookie(
+                    'refresh_token_cookie', 
+                    refresh_token, 
+                    httponly=True, 
+                    secure=True,
+                    samesite='None',
+                    path='/',
+                    max_age=max_age
+                )
+            
             # Add CORS headers
             frontend_url = os.environ.get('FRONTEND_URL', 'http://localhost:5173')
             resp.headers.add('Access-Control-Allow-Credentials', 'true')
@@ -341,6 +395,7 @@ def register_routes(app):
             
         except Exception as e:
             app.logger.error(f"Error in token refresh: {str(e)}")
+            app.logger.error(traceback.format_exc())
             return jsonify({'error': 'Token refresh failed', 'details': str(e)}), 500
         
     @app.route('/api/logout', methods=['POST'])
@@ -583,11 +638,23 @@ def register_routes(app):
                 # Redirect to frontend with error
                 error_query = f"?error={error_message}"
                 app.logger.error(f"Redirecting to frontend with error: {error_message}")
-                return redirect(f"{frontend_url}/login{error_query}")
-
-            # Create JWT tokens like normal login
-            access_token = create_access_token(identity=str(user.id))
-            refresh_token = create_refresh_token(identity=str(user.id))
+                return redirect(f"{frontend_url}/login{error_query}")            # Create JWT tokens with proper types
+            access_token = create_access_token(
+                identity=str(user.id),
+                additional_claims={
+                    'type': 'access',
+                    'email': user.email,
+                    'roles': ['admin'] if user.is_admin else ['user']
+                }
+            )
+            refresh_token = create_refresh_token(
+                identity=str(user.id),
+                additional_claims={
+                    'type': 'refresh',
+                    'refresh_count': 0,
+                    'provider': 'google'
+                }
+            )
             app.logger.info(f"Created tokens for OAuth user {user.email}")
             
             # Create response with redirect 

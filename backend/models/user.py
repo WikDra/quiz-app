@@ -5,6 +5,22 @@ from datetime import datetime
 from flask_bcrypt import generate_password_hash, check_password_hash
 from models import db
 
+class InvalidToken(db.Model):
+    """Store invalidated/blacklisted tokens"""
+    __tablename__ = 'invalid_tokens'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    jti = db.Column(db.String(36), nullable=False, unique=True)
+    type = db.Column(db.String(16), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    expires = db.Column(db.DateTime, nullable=False)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+
+    @classmethod
+    def is_token_revoked(cls, jti):
+        """Check if a token is in the blacklist"""
+        return cls.query.filter_by(jti=jti).first() is not None
+
 class User(db.Model):
     __tablename__ = 'users'
     

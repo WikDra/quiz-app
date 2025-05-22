@@ -1,11 +1,72 @@
 import stripe
 import os
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 from flask import jsonify, request, current_app
 from flask_jwt_extended import jwt_required, get_jwt_identity
-from models import db  # Assuming your db instance is here
+from models import db
 from models.user import User
+
+class StripeSubscription(db.Model):
+    __tablename__ = 'stripe_subscriptions'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    stripe_subscription_id = db.Column(db.String(255), unique=True)
+    stripe_customer_id = db.Column(db.String(255), unique=True)
+    status = db.Column(db.String(50), nullable=False)  # active, canceled, past_due
+    current_period_start = db.Column(db.DateTime, nullable=False)
+    current_period_end = db.Column(db.DateTime, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    canceled_at = db.Column(db.DateTime, nullable=True)
+    
+    # Relationship
+    user = db.relationship('User', backref=db.backref('stripe_subscription', uselist=False))
+    
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'user_id': self.user_id,
+            'stripe_subscription_id': self.stripe_subscription_id,
+            'stripe_customer_id': self.stripe_customer_id,
+            'status': self.status,
+            'current_period_start': self.current_period_start.isoformat() if self.current_period_start else None,
+            'current_period_end': self.current_period_end.isoformat() if self.current_period_end else None,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'canceled_at': self.canceled_at.isoformat() if self.canceled_at else None
+        }
+
+def _process_subscription_by_email(customer_email, session):
+    """Helper function to process subscription by email"""
+    user = User.query.filter_by(email=customer_email).first()
+    if user:
+        subscription = StripeSubscription.query.filter_by(user_id=user.id).first()
+        
+        if not subscription:
+            subscription = StripeSubscription(
+                user_id=user.id,
+                stripe_customer_id=session.get('customer'),
+                stripe_subscription_id=session.get('subscription'),
+                status='active',
+                current_period_start=datetime.utcnow(),
+                current_period_end=datetime.utcnow() + timedelta(days=30)
+            )
+            db.session.add(subscription)
+        else:
+            subscription.status = 'active'
+            subscription.stripe_customer_id = session.get('customer')
+            subscription.stripe_subscription_id = session.get('subscription')
+            subscription.current_period_start = datetime.utcnow()
+            subscription.current_period_end = datetime.utcnow() + timedelta(days=30)
+        
+        user.has_premium_access = True
+        if not user.premium_since:
+            user.premium_since = datetime.utcnow()
+        
+        db.session.commit()
+        current_app.logger.info(f"Subscription created/updated for user {user.id} (via email)")
+    else:
+        current_app.logger.warning(f"User with email {customer_email} not found after payment.")
 
 class StripeController:
     @staticmethod
@@ -13,7 +74,7 @@ class StripeController:
     def create_checkout_session():
         try:
             data = request.get_json()
-            price_id = data.get('priceId') # e.g., price_12345abc or your actual Price ID from Stripe
+            price_id = data.get('priceId')
             if not price_id:
                 return jsonify({'error': 'Price ID is required'}), 400
 
@@ -25,23 +86,18 @@ class StripeController:
                 return jsonify({'error': 'User not found'}), 404
 
             frontend_url = os.environ.get('FRONTEND_URL', 'http://localhost:5173')
-            if not frontend_url:
-                current_app.logger.error("FRONTEND_URL is not set in environment variables.")
-                # Fallback or error, depending on desired behavior
-                # For now, let's assume a default or handle it as an error if critical
-                # return jsonify({'error': 'Application configuration error: FRONTEND_URL not set.'}), 500
-
+            
             checkout_session = stripe.checkout.Session.create(
                 payment_method_types=['card'],
                 line_items=[{
                     'price': price_id,
                     'quantity': 1,
                 }],
-                mode='subscription', # ZMIANA: z 'payment' na 'subscription'
-                success_url=f"{frontend_url}/payment-success?session_id={{CHECKOUT_SESSION_ID}}&subscription=true", # Dodano parametr subscription
+                mode='subscription',
+                success_url=f"{frontend_url}/payment-success?session_id={{CHECKOUT_SESSION_ID}}&subscription=true",
                 cancel_url=f"{frontend_url}/payment-cancelled",
-                customer_email=user.email, # Przekazanie emaila użytkownika
-                client_reference_id=str(user_id) # Przekazanie ID użytkownika do śledzenia
+                customer_email=user.email,
+                client_reference_id=str(user_id)
             )
             current_app.logger.info(f"Checkout session created for user {user_id} with session ID {checkout_session.id}")
             return jsonify({'id': checkout_session.id})
@@ -51,156 +107,130 @@ class StripeController:
             return jsonify({'error': f'Stripe error: {e.user_message or str(e)}'}), 400
         except Exception as e:
             current_app.logger.error(f"Unexpected error during checkout session creation: {str(e)}")
-            return jsonify({'error': 'An unexpected error occurred'}), 500    @staticmethod
-    def handle_webhook():          
+            return jsonify({'error': 'An unexpected error occurred'}), 500
+
+    @staticmethod
+    def handle_webhook():
+        """Handle incoming webhook events from Stripe."""
         payload = request.data
         sig_header = request.headers.get('Stripe-Signature')
         endpoint_secret = os.environ.get('STRIPE_WEBHOOK_SECRET')
         is_development = os.environ.get('FLASK_ENV') == 'development' or os.environ.get('FLASK_DEBUG') == '1'
-          # Check if we have a real Stripe webhook secret
-        if not endpoint_secret or endpoint_secret.startswith('whsec_test_') or endpoint_secret == 'whsec_trudny_webhook_secret' or endpoint_secret.endswith('_webhook_secret'):
-            # This looks like a placeholder or test value
-            current_app.logger.error(f"Found placeholder webhook secret: '{endpoint_secret}'. Please use a real webhook secret from Stripe Dashboard.")
-            
-            if is_development:
-                # In development environment, accept the webhook without verification
-                current_app.logger.warning("Using test/placeholder webhook secret. Bypassing signature verification in development mode.")
-                try:
+
+        # Verify webhook signature
+        try:
+            if not endpoint_secret or endpoint_secret.startswith('whsec_test_'):
+                if is_development:
+                    current_app.logger.warning("Using test webhook secret. Bypassing signature verification in development mode.")
                     event = json.loads(payload)
-                    current_app.logger.info(f"Successfully parsed webhook payload in development mode: {event['type']}")
-                    
-                    # Log helpful information
-                    current_app.logger.info(f"To fix this, please get a real webhook secret from your Stripe Dashboard")
-                    current_app.logger.info(f"Then run: python -m backend.utils.update_webhook_secret")
-                except Exception as e:
-                    current_app.logger.error(f"Failed to parse webhook payload: {str(e)}")
-                    return jsonify({'error': 'Invalid payload format'}), 400
+                else:
+                    current_app.logger.error("Invalid webhook secret configuration in production.")
+                    return jsonify({'error': 'Webhook secret not properly configured'}), 500
             else:
-                current_app.logger.error("Invalid webhook secret configuration in production.")
-                return jsonify({'error': 'Webhook secret not properly configured'}), 500
-        else:
-            # Normal verification flow
-            try:
-                event = stripe.Webhook.construct_event(
-                    payload, sig_header, endpoint_secret
-                )
-            except ValueError as e:
-                # Invalid payload
-                current_app.logger.error(f"Webhook ValueError: {str(e)}")
-                return jsonify({'error': 'Invalid payload'}), 400
-            except stripe.error.SignatureVerificationError as e:
-                # Invalid signature
-                current_app.logger.error(f"Webhook SignatureVerificationError: {str(e)}")
-                return jsonify({'error': 'Invalid signature'}), 400
-            except Exception as e:
-                current_app.logger.error(f"Webhook general error: {str(e)}")
-                return jsonify({'error': 'Webhook processing error'}), 400
-            
-        # Handle the event
-        current_app.logger.info(f"Processing webhook event type: {event['type']}")
-        
-        if event['type'] == 'checkout.session.completed':
-            session = event['data']['object']
-            current_app.logger.info(f"Checkout session completed: {session['id']}")
-            
-            client_reference_id = session.get('client_reference_id')
-            customer_email = session.get('customer_details', {}).get('email')
-            
-            current_app.logger.debug(f"Webhook session data: client_reference_id={client_reference_id}, customer_email={customer_email}")
-            
-            # Grant premium access to the user after successful payment
-            if client_reference_id:
-                try:
-                    # Try to convert client_reference_id to int since it might be stored as string
-                    user_id = int(client_reference_id)
-                    user = User.query.get(user_id)
-                    if user:                        # Update the user's premium access status and force it to True
-                        user.has_premium_access = True
-                        # Record when premium was activated
-                        if not user.premium_since:
-                            user.premium_since = datetime.utcnow()
-                        db.session.add(user)
-                        db.session.commit()
-                        current_app.logger.info(f"User {user.id} ({user.email}) granted premium access after successful payment.")
-                    else:
-                        current_app.logger.warning(f"User with client_reference_id {client_reference_id} not found after payment.")
-                except (ValueError, TypeError) as e:
-                    current_app.logger.error(f"Invalid client_reference_id format: {client_reference_id}, error: {str(e)}")                    # Try fallback to email lookup
-                    if customer_email:
-                        user = User.query.filter_by(email=customer_email).first()
+                event = stripe.Webhook.construct_event(payload, sig_header, endpoint_secret)
+        except (ValueError, stripe.error.SignatureVerificationError) as e:
+            current_app.logger.error(f"Webhook verification error: {str(e)}")
+            return jsonify({'error': 'Invalid payload or signature'}), 400
+
+        try:
+            event_type = event['type']
+            current_app.logger.info(f"Processing webhook event type: {event_type}")
+
+            if event_type == 'checkout.session.completed':
+                session = event['data']['object']
+                client_reference_id = session.get('client_reference_id')
+                customer_email = session.get('customer_details', {}).get('email')
+                
+                current_app.logger.info(f"Processing completed checkout: {session['id']}")
+                
+                if client_reference_id:
+                    try:
+                        user_id = int(client_reference_id)
+                        user = User.query.get(user_id)
                         if user:
+                            subscription = StripeSubscription.query.filter_by(user_id=user.id).first()
+                            
+                            if not subscription:
+                                subscription = StripeSubscription(
+                                    user_id=user.id,
+                                    stripe_customer_id=session.get('customer'),
+                                    stripe_subscription_id=session.get('subscription'),
+                                    status='active',
+                                    current_period_start=datetime.utcnow(),
+                                    current_period_end=datetime.utcnow() + timedelta(days=30)
+                                )
+                                db.session.add(subscription)
+                            else:
+                                subscription.status = 'active'
+                                subscription.stripe_customer_id = session.get('customer')
+                                subscription.stripe_subscription_id = session.get('subscription')
+                                subscription.current_period_start = datetime.utcnow()
+                                subscription.current_period_end = datetime.utcnow() + timedelta(days=30)
+                            
                             user.has_premium_access = True
                             if not user.premium_since:
                                 user.premium_since = datetime.utcnow()
-                            db.session.add(user)
+                            
                             db.session.commit()
-                            current_app.logger.info(f"User {user.id} ({user.email}) granted premium access (via email) after invalid reference ID.")
+                            current_app.logger.info(f"Subscription created/updated for user {user.id}")
                         else:
-                            current_app.logger.warning(f"User with email {customer_email} not found after payment with invalid reference ID.")
-            elif customer_email:                # Fallback to email if client_reference_id is not available
-                user = User.query.filter_by(email=customer_email).first()
-                if user:
-                    user.has_premium_access = True
-                    if not user.premium_since:
-                        user.premium_since = datetime.utcnow()
-                    db.session.add(user)
+                            current_app.logger.warning(f"User with ID {user_id} not found")
+                    except ValueError:
+                        current_app.logger.error(f"Invalid client_reference_id: {client_reference_id}")
+                        if customer_email:
+                            _process_subscription_by_email(customer_email, session)
+                elif customer_email:
+                    _process_subscription_by_email(customer_email, session)
+                else:
+                    current_app.logger.warning("No client_reference_id or customer_email in session")
+
+            elif event_type == 'customer.subscription.deleted':
+                subscription_data = event['data']['object']
+                subscription = StripeSubscription.query.filter_by(
+                    stripe_subscription_id=subscription_data['id']
+                ).first()
+                
+                if subscription:
+                    subscription.status = 'canceled'
+                    subscription.canceled_at = datetime.utcnow()
+                    subscription.user.has_premium_access = False
                     db.session.commit()
-                    current_app.logger.info(f"User {user.id} ({user.email}) granted premium access (via email) after successful payment.")
+                    current_app.logger.info(f"Subscription {subscription.id} canceled for user {subscription.user_id}")
                 else:
-                    current_app.logger.warning(f"User with email {customer_email} not found after payment.")
-            else:
-                current_app.logger.warning("Could not identify user from checkout session.")
+                    current_app.logger.warning(f"Subscription not found: {subscription_data['id']}")
+
+            elif event_type == 'customer.subscription.updated':
+                subscription_data = event['data']['object']
+                subscription = StripeSubscription.query.filter_by(
+                    stripe_subscription_id=subscription_data['id']
+                ).first()
                 
-        elif event['type'] == 'payment_intent.succeeded':
-            payment_intent = event['data']['object']
-            current_app.logger.info(f"PaymentIntent succeeded: {payment_intent['id']}")
-            # Handle successful payment intent if needed (e.g. for subscriptions, etc.)
-            
-        elif event['type'] == 'customer.subscription.deleted':
-            subscription = event['data']['object']
-            customer_id = subscription.get('customer')
-            
-            # Find the user related to this subscription 
-            # First, try to get the customer details
-            try:
-                customer = stripe.Customer.retrieve(customer_id)
-                customer_email = customer.get('email')
-                
-                if customer_email:
-                    user = User.query.filter_by(email=customer_email).first()
-                    if user:                        
-                        user.has_premium_access = False
-                        # We don't reset premium_since to allow tracking of past subscriptions
-                        db.session.add(user)
-                        db.session.commit()
-                        current_app.logger.info(f"Premium access revoked for user {user.id} ({user.email}) due to subscription cancellation.")
-                    else:
-                        current_app.logger.warning(f"User with email {customer_email} not found during subscription cancellation.")
+                if subscription:
+                    subscription.status = subscription_data['status']
+                    subscription.current_period_end = datetime.fromtimestamp(subscription_data['current_period_end'])
+                    db.session.commit()
+                    current_app.logger.info(f"Subscription {subscription.id} updated for user {subscription.user_id}")
                 else:
-                    current_app.logger.warning(f"No email found for customer {customer_id} during subscription cancellation.")
-            except Exception as e:
-                current_app.logger.error(f"Error processing subscription cancellation for customer {customer_id}: {str(e)}")
-        
-        # Handle other subscription events if needed
-        elif event['type'] == 'customer.subscription.updated':
-            subscription = event['data']['object']
-            current_app.logger.info(f"Subscription updated: {subscription['id']}")
-            # Handle subscription updates (like changes in plan, etc.)
-            
-        elif event['type'] == 'invoice.payment_failed':
-            invoice = event['data']['object']
-            current_app.logger.warning(f"Invoice payment failed: {invoice['id']}")
-            # Handle failed payments, maybe notify users or admins
-            
-        else:
-            current_app.logger.info(f"Received unhandled webhook event type: {event['type']}")
+                    current_app.logger.warning(f"Subscription not found: {subscription_data['id']}")
+
+            elif event_type == 'invoice.payment_failed':
+                invoice = event['data']['object']
+                current_app.logger.warning(f"Invoice payment failed: {invoice['id']}")
+                # TODO: Consider notifying user or admin about payment failure
+
+        except Exception as e:
+            current_app.logger.error(f"Error processing webhook {event_type}: {str(e)}")
+            return jsonify({'error': 'Webhook processing error'}), 500
 
         return jsonify({'status': 'success'}), 200
 
 def register_stripe_routes(app):
+    """Register Stripe-related routes with the Flask app."""
     stripe.api_key = os.environ.get('STRIPE_SECRET_KEY')
     if not stripe.api_key:
         app.logger.warning("STRIPE_SECRET_KEY is not set. Stripe functionality will not work.")
 
-    app.add_url_rule('/api/stripe/create-checkout-session', 'create_checkout_session_route', StripeController.create_checkout_session, methods=['POST'])
-    app.add_url_rule('/api/stripe/webhook', 'stripe_webhook_route', StripeController.handle_webhook, methods=['POST'])
+    app.add_url_rule('/api/stripe/create-checkout-session', 'create_checkout_session_route', 
+                     StripeController.create_checkout_session, methods=['POST'])
+    app.add_url_rule('/api/stripe/webhook', 'stripe_webhook_route', 
+                     StripeController.handle_webhook, methods=['POST'])
