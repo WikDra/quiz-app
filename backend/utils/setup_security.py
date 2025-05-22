@@ -1,15 +1,57 @@
 """
-Utility script to generate security keys and OAuth credentials
+Security setup utilities
 """
 import os
-import base64
 import secrets
 import json
+from pathlib import Path
 from dotenv import load_dotenv, set_key
+
+def generate_secret_key(length=32):
+    """Generate a secure random secret key"""
+    return secrets.token_urlsafe(length)
+
+def update_env_file():
+    """Update .env file with required security settings if they don't exist"""
+    env_path = Path(__file__).parent.parent / '.env'
+      # Default values for required settings
+    required_settings = {
+        'FLASK_SECRET_KEY': lambda: generate_secret_key(32),
+        'JWT_SECRET_KEY': lambda: generate_secret_key(32),
+        'STRIPE_WEBHOOK_SECRET': lambda: 'whsec_test_' + generate_secret_key(24),
+        'STRIPE_SECRET_KEY': lambda: 'sk_test_' + generate_secret_key(24),
+        'STRIPE_PUBLISHABLE_KEY': lambda: 'pk_test_' + generate_secret_key(24),
+    }
+    
+    # Read existing .env content
+    existing_settings = {}
+    if env_path.exists():
+        with open(env_path, 'r', encoding='utf-8') as f:
+            for line in f:
+                if '=' in line:
+                    key, value = line.strip().split('=', 1)
+                    existing_settings[key] = value
+
+    # Update settings
+    updated = False
+    for key, default_value in required_settings.items():
+        if key not in existing_settings or not existing_settings[key]:
+            existing_settings[key] = default_value()
+            updated = True
+    
+    # Write updated .env file if changes were made
+    if updated:
+        with open(env_path, 'w', encoding='utf-8') as f:
+            for key, value in existing_settings.items():
+                f.write(f'{key}={value}\n')
+        
+        return True
+    
+    return False
 
 def generate_key(length=32):
     """Generate a secure random key"""
-    return base64.b64encode(secrets.token_bytes(length)).decode('utf-8')
+    return secrets.token_urlsafe(length)
 
 def setup_security():
     """Set up security keys and OAuth credentials"""

@@ -2,8 +2,11 @@
 Utility functions for JWT token management
 """
 from datetime import datetime, timedelta
-from flask_jwt_extended import get_jwt
 from flask import current_app
+from flask_jwt_extended import get_jwt, create_refresh_token
+from models import db
+from models.user import InvalidToken
+import random
 
 def check_token_expiration(token_claims=None, buffer_time=300):
     """
@@ -75,3 +78,86 @@ def get_token_metadata():
         'jti': token_claims.get('jti'),  # Unique token identifier
         'user_id': token_claims.get('sub')  # Subject (user ID)
     }
+
+def invalidate_token(token_claims):
+    """
+    Add a token to the blacklist.
+    
+    Args:
+        token_claims (dict): Claims from the token to invalidate.
+        
+    Returns:
+        InvalidToken: The created InvalidToken record.
+    """
+    jti = token_claims.get('jti')
+    expires = datetime.fromtimestamp(token_claims.get('exp'))
+    user_id = int(token_claims.get('sub'))
+    token_type = token_claims.get('type', 'access')
+    
+    invalid_token = InvalidToken(
+        jti=jti,
+        type=token_type,
+        user_id=user_id,
+        expires=expires
+    )
+    db.session.add(invalid_token)
+    db.session.commit()
+    
+    return invalid_token
+
+def create_rotated_refresh_token(identity, old_token_claims):
+    """
+    Create a new refresh token while invalidating the old one.
+    
+    Args:
+        identity (str): User identity for the new token.
+        old_token_claims (dict): Claims from the old token to rotate.
+        
+    Returns:
+        str: New refresh token
+    """
+    # Get refresh count from old token
+    old_refresh_count = old_token_claims.get('refresh_count', 0)
+    
+    # Create new token with incremented refresh count
+    new_token = create_refresh_token(
+        identity=identity,
+        additional_claims={
+            'refresh_count': old_refresh_count + 1,
+            'type': 'refresh',
+            'rotated_at': datetime.utcnow().isoformat()
+        }
+    )
+    
+    # Invalidate the old token
+    invalidate_token(old_token_claims)
+    
+    return new_token
+
+def maybe_cleanup_tokens():
+    """
+    Attempt to clean up expired tokens, but only occasionally to prevent
+    too frequent database operations. Should be called on token refresh.
+    """
+    try:
+        # Only run cleanup ~5% of the time when this function is called
+        if random.random() < 0.05:
+            cleanup_expired_tokens()
+    except Exception as e:
+        current_app.logger.error(f"Error in token cleanup: {str(e)}")
+
+def cleanup_expired_tokens():
+    """
+    Remove expired tokens from the invalid_tokens table.
+    Should be called periodically to prevent the table from growing too large.
+    """
+    try:
+        now = datetime.utcnow()
+        expired_count = InvalidToken.query.filter(InvalidToken.expires < now).delete()
+        db.session.commit()
+        current_app.logger.info(f"Cleaned up {expired_count} expired tokens from blacklist")
+        return expired_count
+    except Exception as e:
+        current_app.logger.error(f"Error cleaning up expired tokens: {str(e)}")
+        db.session.rollback()
+        return 0

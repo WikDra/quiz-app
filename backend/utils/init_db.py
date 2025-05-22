@@ -52,6 +52,22 @@ def init_database():
                 logger.info("'premium_since' column exists in 'users' table.")
             else:
                 logger.error("'premium_since' column DOES NOT exist in 'users' table!")
+                
+        if 'stripe_subscriptions' not in tables:
+            logger.error("'stripe_subscriptions' table was not created!")
+        else:
+            logger.info("'stripe_subscriptions' table exists.")
+            columns = [col['name'] for col in inspector.get_columns('stripe_subscriptions')]
+            required_columns = [
+                'user_id', 'stripe_subscription_id', 'stripe_customer_id', 
+                'status', 'current_period_start', 'current_period_end',
+                'created_at', 'canceled_at'
+            ]
+            for col in required_columns:
+                if col in columns:
+                    logger.info(f"'{col}' column exists in 'stripe_subscriptions' table.")
+                else:
+                    logger.error(f"'{col}' column DOES NOT exist in 'stripe_subscriptions' table!")
             
         if 'quizzes' not in tables:
             logger.error("'quizzes' table was not created!")
