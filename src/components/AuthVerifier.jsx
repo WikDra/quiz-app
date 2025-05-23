@@ -4,8 +4,8 @@ import { useNavigate } from 'react-router-dom';
 
 /**
  * Komponent odpowiedzialny za weryfikację stanu uwierzytelniania co określony czas
- * Zapobiega sytuacji, gdy użytkownik jest nadal zalogowany w UI, ale token JWT wygasł
- * Dodatkowo obsługuje odświeżanie tokenów JWT przed ich wygaśnięciem
+ * Zapobiega sytuacji, gdy użytkownik jest nadal zalogowany w UI, ale sesja wygasła
+ * lub ciasteczka zostały usunięte
  */
 const AuthVerifier = () => {
   const { verifyAuthState, refreshToken, logout, user } = useAuth();
@@ -13,7 +13,6 @@ const AuthVerifier = () => {
   const [lastVerified, setLastVerified] = useState(Date.now());
   const [consecutiveFailures, setConsecutiveFailures] = useState(0);
   const navigate = useNavigate();
-
   // Verification logic extracted to a function
   const performVerification = useCallback(async () => {
     console.log("AuthVerifier: weryfikacja stanu uwierzytelniania...");
@@ -24,7 +23,7 @@ const AuthVerifier = () => {
         return;
       }
 
-      // Try to verify auth state
+      // Try to verify auth state using cookie-based auth
       const isValid = await verifyAuthState();
       
       if (isValid) {
@@ -32,24 +31,14 @@ const AuthVerifier = () => {
         setLastVerified(Date.now());
         setConsecutiveFailures(0);
       } else {
-        console.warn("AuthVerifier: Auth state invalid, attempting token refresh");
+        console.warn("AuthVerifier: Auth state invalid");
         setConsecutiveFailures(prev => prev + 1);
         
-        // Try to refresh the token
-        const refreshSuccess = await refreshToken();
-        
-        if (refreshSuccess) {
-          console.log("AuthVerifier: Token refreshed successfully");
-          setConsecutiveFailures(0);
-        } else {
-          console.error("AuthVerifier: Token refresh failed");
-          
-          // After 3 consecutive failures, log out
-          if (consecutiveFailures >= 2) { // 2 + current = 3 total
-            console.error("AuthVerifier: Multiple auth verification failures, logging out");
-            await logout();
-            navigate('/login');
-          }
+        // After 3 consecutive failures, log out
+        if (consecutiveFailures >= 2) { // 2 + current = 3 total
+          console.error("AuthVerifier: Multiple auth verification failures, logging out");
+          await logout();
+          navigate('/login');
         }
       }
     } catch (error) {
@@ -63,7 +52,7 @@ const AuthVerifier = () => {
         navigate('/login');
       }
     }
-  }, [verifyAuthState, refreshToken, logout, user, consecutiveFailures, navigate]);
+  }, [verifyAuthState, logout, user, consecutiveFailures, navigate]);
 
   useEffect(() => {
     // First verification on mount 

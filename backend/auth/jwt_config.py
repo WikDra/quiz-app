@@ -13,16 +13,26 @@ jwt = JWTManager()
 logger = logging.getLogger('app')
 
 def init_jwt(app):
-    """Initialize JWT configuration"""
-    # JWT configuration
-    app.config['JWT_TOKEN_LOCATION'] = ['headers', 'cookies']
-    app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(hours=1)
+    """Initialize JWT configuration"""    # JWT configuration      
+      # Token settings
+    app.config['JWT_TOKEN_LOCATION'] = ['cookies']  # Use only cookies, no headers
+    app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(minutes=2)  # Short expiry for testing
     app.config['JWT_REFRESH_TOKEN_EXPIRES'] = timedelta(days=30)
-    app.config['JWT_COOKIE_SECURE'] = True
-    app.config['JWT_COOKIE_SAMESITE'] = 'None'  # Required for cross-site requests
+      # Cookie settings
+    app.config['JWT_COOKIE_SECURE'] = False  # TEMPORARILY FOR HTTP LOCAL DEV
+    app.config['JWT_COOKIE_SAMESITE'] = 'None'  # Required for cross-site access
+    app.config['JWT_COOKIE_DOMAIN'] = None  # Allow cookies for same-origin or specified domain
+    app.config['JWT_SESSION_COOKIE'] = False  # Make it a non-session cookie
+    app.config['JWT_COOKIE_CSRF_PROTECT'] = True  # Enable CSRF protection
+    app.config['JWT_CSRF_IN_COOKIES'] = False  # CSRF value in JWT payload, not separate cookies
+    app.config['JWT_ACCESS_CSRF_HEADER_NAME'] = 'X-CSRF-TOKEN'
+    app.config['JWT_REFRESH_CSRF_HEADER_NAME'] = 'X-CSRF-TOKEN'
+    app.config['JWT_ACCESS_CSRF_FIELD_NAME'] = 'csrf'  # Field name in JWT payload for access token
+    app.config['JWT_REFRESH_CSRF_FIELD_NAME'] = 'csrf'  # Field name in JWT payload for refresh token
+    app.config['JWT_CSRF_METHODS'] = ['POST', 'PUT', 'PATCH', 'DELETE']
+    
+    # Security settings
     app.config['JWT_SECRET_KEY'] = os.environ.get('JWT_SECRET_KEY')
-    app.config['JWT_ACCESS_CSRF_HEADER_NAME'] = "X-CSRF-TOKEN"
-    app.config['JWT_COOKIE_CSRF_PROTECT'] = False  # Disable CSRF protection for now
     app.config['JWT_BLACKLIST_ENABLED'] = True
     app.config['JWT_BLACKLIST_TOKEN_CHECKS'] = ['access', 'refresh']
     

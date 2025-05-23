@@ -149,7 +149,8 @@ export const QuizProvider = ({ children }) => {
   const deleteQuiz = useCallback(async (id) => {
     if (!id) throw new Error('Quiz ID is required');
     
-    try {      const response = await fetch(API_ENDPOINTS.QUIZ_BY_ID(id), {
+    try {      
+        const response = await fetch(API_ENDPOINTS.QUIZ_BY_ID(id), {
         method: 'DELETE',
         credentials: 'include', // Include cookies with request
       });

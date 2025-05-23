@@ -68,7 +68,7 @@ def _process_subscription_by_email(customer_email, session):
     else:
         current_app.logger.warning(f"User with email {customer_email} not found after payment.")
 
-class StripeController:
+class StripeController:    
     @staticmethod
     @jwt_required()
     def create_checkout_session():

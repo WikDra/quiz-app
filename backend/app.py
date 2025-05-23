@@ -7,7 +7,7 @@ import time
 import logging
 import threading
 from datetime import timedelta
-from flask import Flask, jsonify
+from flask import Flask, jsonify, request
 from flask_cors import CORS
 from dotenv import load_dotenv
 from models import db
@@ -67,12 +67,33 @@ def create_app():
     
     # Frontend URL for CORS
     frontend_url = os.environ.get('FRONTEND_URL', 'http://localhost:5173')
-    app.config['CORS_ORIGINS'] = frontend_url
-    
-    # Initialize extensions
+    app.config['CORS_ORIGINS'] = frontend_url    # Initialize extensions
     db.init_app(app)
-    CORS(app, resources={r"/api/*": {"origins": [frontend_url]}}, 
-         supports_credentials=True)
+      # Configure CORS
+    CORS(app,
+        resources={
+            r"/api/*": {
+                "origins": [frontend_url],
+                "allow_headers": ["Content-Type", "Authorization", "X-CSRF-TOKEN"],
+                "expose_headers": ["X-CSRF-TOKEN"],
+                "methods": ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+                "supports_credentials": True,
+                "send_wildcard": False
+            }
+        })
+        
+    # Add CORS headers to all responses
+    @app.after_request
+    def after_request(response):
+        if not response.headers.get('Access-Control-Allow-Origin'):
+            response.headers['Access-Control-Allow-Origin'] = frontend_url
+        if not response.headers.get('Access-Control-Allow-Credentials'):
+            response.headers['Access-Control-Allow-Credentials'] = 'true'
+        if request.method == 'OPTIONS':
+            response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, PATCH, DELETE, OPTIONS'
+            response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, X-CSRF-TOKEN'
+            response.headers['Access-Control-Max-Age'] = '3600'
+        return response
     
     # Configure OAuth
     oauth = init_oauth(app)

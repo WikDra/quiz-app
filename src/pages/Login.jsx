@@ -56,7 +56,6 @@ const Login = () => {
       [name]: value
     }));
   }, []);
-
   const handleSubmit = useCallback(async (e) => {
     e.preventDefault();
     setError('');
@@ -64,15 +63,22 @@ const Login = () => {
     try {
       setLoading(true);
       console.log("Próba logowania z danymi:", { email: formData.email });
-      const result = await login(formData.email, formData.password);
+      
+      // New format for cookie-based auth
+      const result = await login({
+        email: formData.email,
+        password: formData.password,
+        remember_me: false // Could add checkbox for this
+      });
+      
       console.log("Otrzymany rezultat logowania:", result);
       
       if (result.success) {
         console.log("Logowanie udane, przekierowanie do /home");
         navigate('/home');
       } else {
-        console.error("Błąd logowania:", result.error);
-        setError(result.error || 'Nieprawidłowy email lub hasło');
+        console.error("Błąd logowania:", result.message);
+        setError(result.message || 'Nieprawidłowy email lub hasło');
       }
     } catch (err) {
       console.error("Wyjątek podczas logowania:", err);
@@ -111,12 +117,11 @@ const Login = () => {
             {loading ? 'Logowanie...' : 'Zaloguj się'}
           </button>
         </form>        <div className="social-login">
-          <p>Lub zaloguj się za pomocą:</p>
-          <button 
+          <p>Lub zaloguj się za pomocą:</p>          <button 
             type="button" 
             onClick={() => {
-              // Redirect to Google login endpoint
-              window.location.href = "http://localhost:5000/api/login/google";
+              // Redirect to Google login endpoint (backend_v2)
+              window.location.href = "http://localhost:5000/api/auth/google";
               // No polling needed since the server redirects back to our callback URL
             }} 
             className="google-login-button"

@@ -5,9 +5,32 @@
 // API URLs
 export const API_BASE_URL = 'http://localhost:5000';
 export const API_ENDPOINTS = {
+  // Authentication endpoints
+  AUTH_CSRF: `${API_BASE_URL}/api/auth/csrf-token`,
+  AUTH_LOGIN: `${API_BASE_URL}/api/auth/login`,
+  AUTH_REGISTER: `${API_BASE_URL}/api/auth/register`,
+  AUTH_LOGOUT: `${API_BASE_URL}/api/auth/logout`,
+  AUTH_CHECK: `${API_BASE_URL}/api/auth/check`,
+  AUTH_ME: `${API_BASE_URL}/api/auth/me`,
+  AUTH_REFRESH: `${API_BASE_URL}/api/auth/refresh`,
+  AUTH_PING: `${API_BASE_URL}/api/auth/ping`,
+  AUTH_DEBUG: `${API_BASE_URL}/api/auth/debug`,
+  AUTH_SET_SESSION: `${API_BASE_URL}/api/auth/set-session`,
+  
+  // Quiz endpoints
   QUIZ: `${API_BASE_URL}/api/quiz`,
-  USERS: `${API_BASE_URL}/api/users`, // Zmieniamy na /api/users zamiast users.json
-  QUIZ_BY_ID: (id) => `${API_BASE_URL}/api/quiz/${id}`
+  QUIZ_BY_ID: (id) => `${API_BASE_URL}/api/quiz/${id}`,
+  QUIZ_MY: `${API_BASE_URL}/api/quiz/my`,
+  QUIZ_ATTEMPT: (id) => `${API_BASE_URL}/api/quiz/${id}/attempt`,
+  
+  // User endpoints
+  USER_PROFILE: `${API_BASE_URL}/api/user/profile`,
+  USER_STATS: `${API_BASE_URL}/api/user/stats`,
+  USER_PASSWORD: `${API_BASE_URL}/api/user/password`,
+  
+  // Payment endpoints
+  STRIPE_CREATE_PAYMENT: `${API_BASE_URL}/api/stripe/create-payment-intent`,
+  STRIPE_SUBSCRIPTION: `${API_BASE_URL}/api/stripe/subscription-status`
 };
 
 // Kategorie quizów
@@ -48,13 +71,11 @@ export const USER_LEVELS = [
   'Ekspert'
 ];
 
-// Klucze dla localStorage
+// Klucze dla localStorage (zredukowane dla cookie-based auth)
 export const STORAGE_KEYS = {
-  USER: 'quiz_app_user',
-  ACCESS_TOKEN: 'quiz_app_access_token',
-  REFRESH_TOKEN: 'quiz_app_refresh_token',
   THEME: 'quiz_app_theme',
-  QUIZ_HISTORY: 'quiz_app_history'
+  QUIZ_HISTORY: 'quiz_app_history',
+  CSRF_TOKEN: 'quiz_app_csrf_token'
 };
 
 // Limity i ograniczenia

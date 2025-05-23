@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Backend v2 - Quiz App</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        input, textarea {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            box-sizing: border-box;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            margin-right: 10px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        .response {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 5px;
+            white-space: pre-wrap;
+        }
+        .success {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .error {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .section {
+            margin-bottom: 30px;
+            padding: 20px;
+            border: 1px solid #e9ecef;
+            border-radius: 5px;
+        }
+        h2 {
+            color: #333;
+            border-bottom: 2px solid #007bff;
+            padding-bottom: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🧪 Test Backend v2 - Quiz App</h1>
+        <p>Testowanie API z autentykacją przez ciasteczka i ochroną CSRF</p>
+
+        <!-- Status Section -->
+        <div class="section">
+            <h2>Status aplikacji</h2>
+            <button onclick="checkHealth()">Sprawdź health</button>
+            <button onclick="getCSRFToken()">Pobierz CSRF token</button>
+            <button onclick="checkAuth()">Sprawdź autentykację</button>
+            <div id="statusResponse" class="response" style="display: none;"></div>
+        </div>
+
+        <!-- Registration Section -->
+        <div class="section">
+            <h2>Rejestracja użytkownika</h2>
+            <div class="form-group">
+                <label>Username:</label>
+                <input type="text" id="regUsername" value="testuser2">
+            </div>
+            <div class="form-group">
+                <label>Email:</label>
+                <input type="email" id="regEmail" value="test2@example.com">
+            </div>
+            <div class="form-group">
+                <label>Hasło:</label>
+                <input type="password" id="regPassword" value="test123">
+            </div>
+            <div class="form-group">
+                <label>Imię:</label>
+                <input type="text" id="regFirstName" value="Test">
+            </div>
+            <div class="form-group">
+                <label>Nazwisko:</label>
+                <input type="text" id="regLastName" value="User2">
+            </div>
+            <button onclick="register()">Zarejestruj</button>
+            <div id="registerResponse" class="response" style="display: none;"></div>
+        </div>
+
+        <!-- Login Section -->
+        <div class="section">
+            <h2>Logowanie</h2>
+            <div class="form-group">
+                <label>Email:</label>
+                <input type="email" id="loginEmail" value="admin@quiz-app.com">
+            </div>
+            <div class="form-group">
+                <label>Hasło:</label>
+                <input type="password" id="loginPassword" value="admin123">
+            </div>
+            <div class="form-group">
+                <label>
+                    <input type="checkbox" id="rememberMe"> Zapamiętaj mnie
+                </label>
+            </div>
+            <button onclick="login()">Zaloguj</button>
+            <button onclick="logout()">Wyloguj</button>
+            <div id="loginResponse" class="response" style="display: none;"></div>
+        </div>
+
+        <!-- Quiz Section -->
+        <div class="section">
+            <h2>Quizy</h2>
+            <button onclick="getQuizzes()">Pobierz publiczne quizy</button>
+            <button onclick="getMyQuizzes()">Moje quizy</button>
+            <button onclick="getUserStats()">Moje statystyki</button>
+            <div id="quizResponse" class="response" style="display: none;"></div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost:5000/api';
+        let csrfToken = null;
+
+        // Helper function to make API calls
+        async function apiCall(url, options = {}) {
+            const defaultOptions = {
+                credentials: 'include',  // Important for cookies
+                headers: {
+                    'Content-Type': 'application/json',
+                    ...(csrfToken && { 'X-CSRFToken': csrfToken })
+                }
+            };
+            
+            const response = await fetch(API_BASE + url, { ...defaultOptions, ...options });
+            return response.json();
+        }
+
+        // Display response
+        function showResponse(elementId, data, isError = false) {
+            const element = document.getElementById(elementId);
+            element.style.display = 'block';
+            element.className = `response ${isError ? 'error' : 'success'}`;
+            element.textContent = JSON.stringify(data, null, 2);
+        }
+
+        // Status functions
+        async function checkHealth() {
+            try {
+                const data = await apiCall('/health', { method: 'GET' });
+                showResponse('statusResponse', data);
+            } catch (error) {
+                showResponse('statusResponse', { error: error.message }, true);
+            }
+        }
+
+        async function getCSRFToken() {
+            try {
+                const data = await apiCall('/auth/csrf-token', { method: 'GET' });
+                csrfToken = data.csrf_token;
+                showResponse('statusResponse', { message: 'CSRF token pobrano', token: csrfToken });
+            } catch (error) {
+                showResponse('statusResponse', { error: error.message }, true);
+            }
+        }
+
+        async function checkAuth() {
+            try {
+                const data = await apiCall('/auth/check', { method: 'GET' });
+                showResponse('statusResponse', data);
+            } catch (error) {
+                showResponse('statusResponse', { error: error.message }, true);
+            }
+        }
+
+        // Auth functions
+        async function register() {
+            try {
+                if (!csrfToken) await getCSRFToken();
+                
+                const userData = {
+                    username: document.getElementById('regUsername').value,
+                    email: document.getElementById('regEmail').value,
+                    password: document.getElementById('regPassword').value,
+                    first_name: document.getElementById('regFirstName').value,
+                    last_name: document.getElementById('regLastName').value
+                };
+
+                const data = await apiCall('/auth/register', {
+                    method: 'POST',
+                    body: JSON.stringify(userData)
+                });
+
+                showResponse('registerResponse', data, !data.success);
+            } catch (error) {
+                showResponse('registerResponse', { error: error.message }, true);
+            }
+        }
+
+        async function login() {
+            try {
+                if (!csrfToken) await getCSRFToken();
+                
+                const loginData = {
+                    email: document.getElementById('loginEmail').value,
+                    password: document.getElementById('loginPassword').value,
+                    remember_me: document.getElementById('rememberMe').checked
+                };
+
+                const data = await apiCall('/auth/login', {
+                    method: 'POST',
+                    body: JSON.stringify(loginData)
+                });
+
+                showResponse('loginResponse', data, !data.success);
+            } catch (error) {
+                showResponse('loginResponse', { error: error.message }, true);
+            }
+        }
+
+        async function logout() {
+            try {
+                if (!csrfToken) await getCSRFToken();
+                
+                const data = await apiCall('/auth/logout', {
+                    method: 'POST'
+                });
+
+                showResponse('loginResponse', data, !data.success);
+            } catch (error) {
+                showResponse('loginResponse', { error: error.message }, true);
+            }
+        }
+
+        // Quiz functions
+        async function getQuizzes() {
+            try {
+                const data = await apiCall('/quiz/', { method: 'GET' });
+                showResponse('quizResponse', data, !data.success);
+            } catch (error) {
+                showResponse('quizResponse', { error: error.message }, true);
+            }
+        }
+
+        async function getMyQuizzes() {
+            try {
+                const data = await apiCall('/quiz/my', { method: 'GET' });
+                showResponse('quizResponse', data, !data.success);
+            } catch (error) {
+                showResponse('quizResponse', { error: error.message }, true);
+            }
+        }
+
+        async function getUserStats() {
+            try {
+                const data = await apiCall('/user/stats', { method: 'GET' });
+                showResponse('quizResponse', data, !data.success);
+            } catch (error) {
+                showResponse('quizResponse', { error: error.message }, true);
+            }
+        }
+
+        // Auto-load CSRF token on page load
+        window.onload = function() {
+            getCSRFToken();
+        };
+    </script>
+</body>
+</html>

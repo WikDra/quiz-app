@@ -117,8 +117,8 @@ const UserSettings = () => {
     
     setIsLoading(true);
     
-    try {      // Używamy osobnego zapytania API do zmiany hasła zamiast standardowego updateUserData
-      const response = await fetch(`${API_BASE_URL}/api/users/${user.id}/change-password`, {
+    try {      // Używamy nowego endpoint API v2 do zmiany hasła
+      const response = await fetch(`${API_BASE_URL}/api/user/password`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',

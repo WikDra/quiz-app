@@ -52,9 +52,7 @@ def register_routes(app):
         if not user:
             app.logger.warning(f"User with ID {user_id} not found")
             return jsonify({'error': 'User not found'}), 404
-        return jsonify(user.to_dict()), 200
-    
-    @app.route('/api/users/<int:user_id>', methods=['PUT'])
+        return jsonify(user.to_dict()), 200    @app.route('/api/users/<int:user_id>', methods=['PUT'])
     @jwt_required()
     def update_user_data_route(user_id):
         """Update user data (username, email)"""
@@ -74,9 +72,7 @@ def register_routes(app):
             if "Email already in use" in error:
                 status_code = 409  # Conflict
             return jsonify({'error': error}), status_code
-        return jsonify(user_data)
-    
-    @app.route('/api/users/<int:user_id>/change-password', methods=['PUT'])
+        return jsonify(user_data)    @app.route('/api/users/<int:user_id>/change-password', methods=['PUT'])
     @jwt_required()
     def change_password_route(user_id):
         """Change user password"""
@@ -98,9 +94,7 @@ def register_routes(app):
         if error:
             status_code = 404 if error == "User not found" else 400
             return jsonify({'error': error}), status_code
-        return jsonify(result)
-    
-    @app.route('/api/users/<int:user_id>/avatar', methods=['PUT'])
+        return jsonify(result)    @app.route('/api/users/<int:user_id>/avatar', methods=['PUT'])
     @jwt_required()
     def update_user_avatar(user_id):
         """Update user avatar"""
@@ -123,9 +117,8 @@ def register_routes(app):
         if error:
             return jsonify({'error': error}), 500
         return jsonify(result)    
-    
     @app.route('/api/users/me/profile', methods=['GET'])
-    @jwt_required()
+    @jwt_required(locations=['cookies'])
     def get_current_user_profile():
         """Get profile details for the current user"""
         try:
@@ -295,32 +288,31 @@ def register_routes(app):
             return resp, 200
         except Exception as e:
             app.logger.error(f"Error creating JWT tokens: {str(e)}")
-            return jsonify({'error': 'Internal server error during authentication'}), 500
+            return jsonify({'error': 'Internal server error during authentication'}), 500    
     @app.route('/api/token/refresh', methods=['POST', 'OPTIONS'])
     def refresh_token():
         """Handle token refresh requests"""
         if request.method == 'OPTIONS':
-            response = make_response()
-            response.headers.add('Access-Control-Allow-Methods', 'POST, OPTIONS')
-            response.headers.add('Access-Control-Allow-Headers', 'Content-Type')
-            response.headers.add('Access-Control-Allow-Credentials', 'true')
-            frontend_url = os.environ.get('FRONTEND_URL', 'http://localhost:5173')
-            response.headers.add('Access-Control-Allow-Origin', app.config.get('CORS_ORIGINS', frontend_url))
-            return response
-
+            return '', 200
+            
+        # Log headers for debugging
+        app.logger.info("Request Headers:")
+        for header, value in request.headers.items():
+            app.logger.info(f"{header}: {value}")
+        
         try:
             # Get refresh token from cookie
             refresh_cookie = request.cookies.get('refresh_token_cookie')
             if not refresh_cookie:
                 app.logger.warning("No refresh token cookie found")
-                return jsonify({'error': 'No refresh token cookie'}), 401
-            
-            # Verify refresh token
+                return jsonify({'error': 'No refresh token cookie'}), 401            # Verify refresh token
+            app.logger.info(f"Headers received: {dict(request.headers)}")
             verify_jwt_in_request(refresh=True)
             
             # Get current user and token claims
             current_user_id = get_jwt_identity()
             jwt_claims = get_jwt()
+            app.logger.info(f"JWT claims for refresh: {jwt_claims}")
             
             # Verify this is actually a refresh token
             if jwt_claims.get('type') != 'refresh':
@@ -375,15 +367,16 @@ def register_routes(app):
             
             # Set new refresh token if rotated
             if refresh_token:
-                max_age = app.config.get('JWT_REFRESH_TOKEN_EXPIRES', 30*24*3600)  # 30 days default
+                max_age = app.config.get('JWT_REFRESH_TOKEN_EXPIRES', 30*24*3600)  # 30 days default                
                 resp.set_cookie(
                     'refresh_token_cookie', 
                     refresh_token, 
                     httponly=True, 
-                    secure=True,
+                    secure=False,  # Set to True in production
                     samesite='None',
                     path='/',
-                    max_age=max_age
+                    max_age=max_age,
+                    domain=None
                 )
             
             # Add CORS headers
@@ -719,9 +712,8 @@ def register_routes(app):
     #     return StripeController.handle_webhook()
     register_stripe_routes(app) # Call the function to register Stripe routes
 
-    # Add a test endpoint for manually updating premium status
-    @app.route('/api/test/update_premium', methods=['POST'])
-    @jwt_required()
+    # Add a test endpoint for manually updating premium status    @app.route('/api/test/update_premium', methods=['POST'])
+    @jwt_required(locations=['cookies'])
     def test_update_premium():
         """Endpoint for testing premium status update"""
         try:
@@ -888,9 +880,8 @@ def register_routes(app):
         resp.headers.add('Access-Control-Allow-Credentials', 'true')
         
         return resp
-    
     @app.route('/api/quiz/<int:quiz_id>', methods=['PUT'])
-    @jwt_required()
+    @jwt_required(locations=['cookies'])
     def update_quiz(quiz_id):
         """Update existing quiz"""
         data = request.get_json()
@@ -912,9 +903,8 @@ def register_routes(app):
             return jsonify({'error': error}), 404 if error == "Quiz not found" else 400
         
         return jsonify(quiz)
-    
     @app.route('/api/quiz/<int:quiz_id>', methods=['DELETE'])
-    @jwt_required()
+    @jwt_required(locations=['cookies'])
     def delete_quiz(quiz_id):
         """Delete quiz"""
         # Check if user is quiz author or admin
@@ -930,11 +920,9 @@ def register_routes(app):
         
         if error:
             return jsonify({'error': error}), 404 if error == "Quiz not found" else 400
-        return jsonify({'message': 'Quiz deleted successfully'})
-
-    # Test endpoint to debug user data structure
+        return jsonify({'message': 'Quiz deleted successfully'})    # Test endpoint to debug user data structure
     @app.route('/api/user-debug', methods=['GET'])
-    @jwt_required()
+    @jwt_required(locations=['cookies'])
     def user_debug():
         """Debug endpoint for user data structure"""
         try:
@@ -1023,10 +1011,8 @@ def register_routes(app):
             else:
                 debug_info['auth']['error'] = 'User ID from token not found in database'
         
-        return jsonify(debug_info)
-
-    @app.route('/api/debug/premium', methods=['GET'])
-    @jwt_required()
+        return jsonify(debug_info)    @app.route('/api/debug/premium', methods=['GET'])
+    @jwt_required(locations=['cookies'])
     def debug_premium_status():
         """Debug endpoint to check premium status and configuration"""
         try:

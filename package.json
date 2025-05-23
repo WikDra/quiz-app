@@ -2,13 +2,12 @@
   "name": "quiz-app",
   "private": true,
   "version": "0.0.0",
-  "type": "module",
-  "scripts": {
+  "type": "module",  "scripts": {
     "dev": "concurrently \"npm run server\" \"npm run frontend\"",
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "server": "cd backend && python run.py",
+    "server": "cd backend_v2 && python run.py",
     "frontend": "vite",
     "start": "npm run dev"
   },

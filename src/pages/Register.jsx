@@ -39,10 +39,12 @@ const FormField = memo(({
 
 const Register = () => {
   const [formData, setFormData] = useState({
-    fullName: '',
+    username: '',
     email: '',
     password: '',
-    confirmPassword: ''
+    confirmPassword: '',
+    first_name: '',
+    last_name: ''
   });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -68,7 +70,6 @@ const Register = () => {
     }
     return true;
   }, [formData.password, formData.confirmPassword]);
-
   const handleSubmit = useCallback(async (e) => {
     e.preventDefault();
     setError('');
@@ -79,11 +80,22 @@ const Register = () => {
 
     try {
       setLoading(true);
-      const result = await register(formData.fullName, formData.email, formData.password);
+      
+      // New format for backend v2
+      const userData = {
+        username: formData.username,
+        email: formData.email,
+        password: formData.password,
+        first_name: formData.first_name,
+        last_name: formData.last_name
+      };
+      
+      const result = await register(userData);
+      
       if (result.success) {
         navigate('/home');
       } else {
-        setError(result.error || 'Wystąpił błąd podczas rejestracji');
+        setError(result.message || 'Wystąpił błąd podczas rejestracji');
       }
     } catch (err) {
       setError('Wystąpił błąd podczas rejestracji');
@@ -96,15 +108,13 @@ const Register = () => {
     <div className="auth-container">
       <div className="auth-card">
         <AuthHeader title="Zarejestruj się" />
-        <ErrorMessage message={error} />
-
-        <form onSubmit={handleSubmit} className="auth-form">
+        <ErrorMessage message={error} />        <form onSubmit={handleSubmit} className="auth-form">
           <FormField
-            id="fullName"
-            label="Imię i nazwisko"
-            value={formData.fullName}
+            id="username"
+            label="Nazwa użytkownika"
+            value={formData.username}
             onChange={handleChange}
-            placeholder="Wprowadź imię i nazwisko"
+            placeholder="Wprowadź nazwę użytkownika"
           />
 
           <FormField
@@ -114,6 +124,22 @@ const Register = () => {
             value={formData.email}
             onChange={handleChange}
             placeholder="Wprowadź email"
+          />
+
+          <FormField
+            id="first_name"
+            label="Imię"
+            value={formData.first_name}
+            onChange={handleChange}
+            placeholder="Wprowadź imię"
+          />
+
+          <FormField
+            id="last_name"
+            label="Nazwisko"
+            value={formData.last_name}
+            onChange={handleChange}
+            placeholder="Wprowadź nazwisko"
           />
 
           <FormField

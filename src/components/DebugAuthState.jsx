@@ -1,80 +1,102 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { API_BASE_URL } from '../utils/constants';
+import { authApi } from '../utils/apiUtils';
 
 /**
- * Component for debugging authentication state
+ * Component for debugging cookie-based authentication state
  * Only shown in development environment
  */
 const DebugAuthState = () => {
   const [isVisible, setIsVisible] = useState(false);
   const [cookieInfo, setCookieInfo] = useState({
     hasCookies: false,
-    hasAuthCookie: false,
-    cookieCount: 0
+    hasSession: false,
+    cookieCount: 0,
+    cookieNames: [],
+    isAuthenticated: false,
+    user: null
   });
   const { user } = useAuth();
-    // Check for cookies and update state
+
+  // Check for cookies and update state
   const updateCookieInfo = useCallback(() => {
     const cookies = document.cookie;
-    const hasAuthCookie = cookies.includes('auth_success');
-    const count = cookies.split(';').filter(c => c.trim().length > 0).length;
+    console.log("Document cookies:", cookies);
     
-    // First update with client-side info
+    // Parse cookies into an object
+    const cookieObj = cookies.split(';').reduce((acc, cookie) => {
+      const [key, value] = cookie.trim().split('=');
+      if (key && key.length > 0) {
+        acc[key] = value;
+      }
+      return acc;
+    }, {});
+    
+    console.log("Parsed cookies:", cookieObj);
+    
+    // Check for session cookie (either real session or our visible indicator)
+    const hasSession = 'session' in cookieObj || 
+                      'visible_session' in cookieObj || 
+                      'session_debug' in cookieObj;
+    const count = Object.keys(cookieObj).length;
+    
+    // Update with client-side info
     setCookieInfo({
       hasCookies: count > 0,
-      hasAuthCookie,
-      cookieCount: count
+      hasSession,
+      cookieCount: count,
+      cookieNames: Object.keys(cookieObj),
+      isAuthenticated: false,
+      user: null
     });
     
-    // Then check with the server to get more accurate info about HttpOnly cookies
-    if (user) {
-      fetch(`${API_BASE_URL}/api/debug/auth`, {
-        credentials: 'include'
-      })
-      .then(response => {
-        if (response.ok) {
-          return response.json();
-        }
-        return null;
-      })
-      .then(data => {
-        if (data) {
-          // Update with server information which includes HttpOnly cookies
-          setCookieInfo(info => ({
-            ...info,
-            hasCookies: data.jwt_access_present || data.jwt_refresh_present,
-            serverCookieCount: Object.keys(data.cookies || {}).length,
-            jwt_valid: !!data.jwt_identity
-          }));
-        }
-      })
-      .catch(err => {
-        console.error("Error checking auth cookies:", err);
-      });
-    }
-    
-    // Log auth state info for debugging
-    if (user && !hasAuthCookie) {
-      console.warn('[AuthStateLogger] User present but no auth cookies - possible sync issue');
-    }
+    // Check with the server for auth status
+    fetch(`${API_BASE_URL}/api/auth/debug`, {
+      credentials: 'include',
+      cache: 'no-store' // Don't cache auth check
+    })
+    .then(response => {
+      if (response.ok) {
+        return response.json();
+      }
+      return null;
+    })
+    .then(data => {
+      if (data) {
+        console.log("Auth debug info:", data);
+        setCookieInfo(info => ({
+          ...info,
+          isAuthenticated: data.authenticated,
+          hasSession: data.session_cookie_present,
+          serverCookieCount: Object.keys(data.cookies || {}).length,
+          serverCookieNames: Object.keys(data.cookies || {}),
+          sessionData: data.session_data,
+          user: data.user
+        }));
+      }
+    })
+    .catch(err => {
+      console.error("Error checking auth state:", err);
+    });
   }, [user]);
-  
-  // Check for cookies periodically
+
+  // Check cookies periodically
   useEffect(() => {
     updateCookieInfo();
     const timer = setInterval(updateCookieInfo, 2000);
     return () => clearInterval(timer);
   }, [updateCookieInfo]);
-  
+
   // Log auth state changes
   useEffect(() => {
     console.log('[AuthStateLogger] Auth state changed:', {
       isLoggedIn: !!user,
       userId: user?.id || null,
-      hasCookies: cookieInfo.hasAuthCookie
+      hasSession: cookieInfo.hasSession,
+      isAuthenticated: cookieInfo.isAuthenticated
     });
-  }, [user, cookieInfo.hasAuthCookie]);
+  }, [user, cookieInfo.hasSession, cookieInfo.isAuthenticated]);
   
   // Only show in development
   if (import.meta.env.DEV !== true) {
@@ -112,24 +134,35 @@ const DebugAuthState = () => {
       </button>
       
       {isVisible && (
-        <div>          <h4>Auth Status:</h4>
+        <div>
+          <h4>Auth Status:</h4>
           <div>User: {user ? `ID: ${user.id}, Email: ${user.email || 'N/A'}` : 'Not logged in'}</div>
           
           <h4>Cookies:</h4>
           <div>Client Cookies: {cookieInfo.cookieCount > 0 ? `${cookieInfo.cookieCount} cookies ✅` : 'None detected in browser ❌'}</div>
-          <div>Auth Success Cookie: {cookieInfo.hasAuthCookie ? 'Present ✅' : 'Missing ❌'}</div>
-          <div>JWT Cookies: {cookieInfo.hasCookies ? 'Present on server ✅' : 'Not detected ❌'}</div>
+          <div>Cookie Names: {cookieInfo.cookieNames?.join(', ') || 'None'}</div>
+          <div>Session Cookie: {cookieInfo.hasSession ? 'Present ✅' : 'Missing ❌'}</div>
+          <div>Server Auth: {cookieInfo.isAuthenticated ? 'Authenticated ✅' : 'Not authenticated ❌'}</div>
           {cookieInfo.serverCookieCount !== undefined && (
             <div>Server Cookies: {cookieInfo.serverCookieCount} detected</div>
           )}
-          {cookieInfo.jwt_valid !== undefined && (
-            <div>JWT Valid: {cookieInfo.jwt_valid ? 'Yes ✅' : 'No ❌'}</div>
+          {cookieInfo.serverCookieNames && (
+            <div>Server Cookie Names: {cookieInfo.serverCookieNames.join(', ')}</div>
           )}
-            <div style={{ marginTop: '10px', display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+          {cookieInfo.sessionData && (
+            <div>
+              <h4>Session Data:</h4>
+              <div>User ID in Session: {cookieInfo.sessionData.user_id || 'None'}</div>
+              <div>Session ID: {cookieInfo.sessionData.session_id || 'None'}</div>
+              <div>Fresh: {cookieInfo.sessionData.fresh ? 'Yes' : 'No'}</div>
+            </div>
+          )}
+            
+          <div style={{ marginTop: '10px', display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
             <button 
               onClick={async () => {
                 try {
-                  const response = await fetch(`${API_BASE_URL}/api/debug/auth`, {
+                  const response = await fetch(`${API_BASE_URL}/api/auth/debug`, {
                     credentials: 'include'
                   });
                   
@@ -137,10 +170,11 @@ const DebugAuthState = () => {
                     const data = await response.json();
                     console.log("Debug auth info:", data);
                     alert(JSON.stringify({
-                      jwt_present: data.jwt_access_present,
-                      user_id: data.jwt_identity,
-                      cookies_count: Object.keys(data.cookies).length,
-                      cookies: Object.keys(data.cookies)
+                      authenticated: data.authenticated,
+                      user_id: data.user?.id,
+                      session_info: data.session_data,
+                      cookies_count: Object.keys(data.cookies || {}).length,
+                      cookies: data.cookies
                     }, null, 2));
                   } else {
                     alert("Failed to get debug info");
@@ -164,23 +198,27 @@ const DebugAuthState = () => {
             </button>
             
             <button
-              onClick={() => {
+              onClick={async () => {
                 try {
-                  // Set a test cookie directly from JavaScript
-                  document.cookie = "js_test_cookie=true; path=/; SameSite=None; Secure";
+                  const response = await fetch(`${API_BASE_URL}/api/auth/set-session`, {
+                    credentials: 'include'
+                  });
                   
-                  // Force creation of the auth_success cookie
-                  const expires = new Date();
-                  expires.setTime(expires.getTime() + 3600 * 1000); // 1 hour
-                  document.cookie = `auth_success=true; path=/; expires=${expires.toUTCString()}; SameSite=None; Secure`;
-                  
-                  // Update immediately to show the new cookie
-                  setTimeout(updateCookieInfo, 100);
-                  
-                  alert("Test cookies set directly from JavaScript. If they don't appear, your browser may be blocking cookies.");
+                  if (response.ok) {
+                    const data = await response.json();
+                    console.log("Set session response:", data);
+                    if (data.cookie_set) {
+                      alert("Session cookie explicitly set. Check cookie status again.");
+                      updateCookieInfo();
+                    } else {
+                      alert("Failed to set session cookie: " + data.message);
+                    }
+                  } else {
+                    alert("Failed to set session cookie");
+                  }
                 } catch (error) {
-                  console.error("Error setting test cookies:", error);
-                  alert(`Failed to set test cookies: ${error.message}`);
+                  console.error('Error:', error);
+                  alert(`Error: ${error.message}`);
                 }
               }}
               style={{
@@ -193,30 +231,26 @@ const DebugAuthState = () => {
                 flex: '1'
               }}
             >
-              Test Set Cookie
+              Set Session Cookie
             </button>
             
-            <button
-              onClick={async () => {
+            <button              onClick={async () => {
                 try {
-                  // Force refresh cookies
-                  const response = await fetch(`${API_BASE_URL}/api/token/refresh`, {
-                    method: 'POST',
-                    credentials: 'include'
-                  });
-                  if (response.ok) {
-                    alert("Token refreshed successfully");
+                  const response = await authApi.refreshToken();
+                  console.log("Refresh response:", response);
+                  if (response.success) {
                     updateCookieInfo();
+                    alert("Session refreshed successfully");
                   } else {
-                    alert("Failed to refresh token");
+                    alert("Failed to refresh session: " + response.message);
                   }
                 } catch (error) {
-                  console.error('Error:', error);
-                  alert(`Error: ${error.message}`);
+                  console.error("Error refreshing session:", error);
+                  alert(`Failed to refresh session: ${error.message}`);
                 }
               }}
               style={{
-                background: '#009688',
+                background: '#4CAF50',
                 color: 'white',
                 border: 'none',
                 padding: '5px 10px',
@@ -225,34 +259,7 @@ const DebugAuthState = () => {
                 flex: '1'
               }}
             >
-              Refresh Token
-            </button>
-            
-            <button 
-              onClick={async () => {
-                try {
-                  // Call the logout API endpoint to clear cookies
-                  await fetch(`${API_BASE_URL}/api/logout`, {
-                    method: 'POST',
-                    credentials: 'include'
-                  });
-                  window.location.reload();
-                } catch (error) {
-                  console.error('Error:', error);
-                  alert(`Error: ${error.message}`);
-                }
-              }}
-              style={{
-                background: '#f44336',
-                color: 'white',
-                border: 'none',
-                padding: '5px 10px',
-                borderRadius: '3px',
-                cursor: 'pointer',
-                flex: '1'
-              }}
-            >
-              Logout
+              Refresh Session
             </button>
           </div>
         </div>

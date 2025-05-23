@@ -16,7 +16,7 @@ const AuthStateLogger = () => {
         // Add a small delay to give other authentication processes a chance to complete
         await new Promise(resolve => setTimeout(resolve, 300));
         
-        const response = await fetch(`${API_BASE_URL}/api/users/me/profile`, {
+        const response = await fetch(`${API_BASE_URL}/api/user/profile`, {
           method: 'GET',
           credentials: 'include',
           // Only use Content-Type header to avoid any CORS issues

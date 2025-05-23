@@ -1,16 +1,20 @@
 import axios from 'axios';
+import { getCsrfToken } from './apiUtils';
 
 const instance = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api',
   withCredentials: true, // Important for sending cookies with requests
 });
 
-// Add a request interceptor to include the token if available
+// Add a request interceptor to include CSRF token
 instance.interceptors.request.use(
-  (config) => {
-    const token = localStorage.getItem('token');
-    if (token) {
-      config.headers['Authorization'] = `Bearer ${token}`;
+  async (config) => {
+    // Get CSRF token for state-changing operations
+    if (['post', 'put', 'delete', 'patch'].includes(config.method?.toLowerCase())) {
+      const csrfToken = await getCsrfToken();
+      if (csrfToken) {
+        config.headers['X-CSRFToken'] = csrfToken;
+      }
     }
     return config;
   },
@@ -19,16 +23,16 @@ instance.interceptors.request.use(
   }
 );
 
-// Optional: Add a response interceptor for global error handling or token refresh
+// Add a response interceptor for global error handling
 instance.interceptors.response.use(
   (response) => response,
   (error) => {
-    // Example: Handle 401 Unauthorized (e.g., token expired)
+    // Handle 401 Unauthorized (session expired)
     if (error.response && error.response.status === 401) {
-      // Potentially redirect to login or try to refresh the token
-      console.error('Unauthorized request. Token might be invalid or expired.');
-      // localStorage.removeItem('token');
-      // localStorage.removeItem('user');
+      console.error('Unauthorized request. Session might be expired.');
+      // Clear any stored CSRF token
+      localStorage.removeItem('quiz_app_csrf_token');
+      // Optionally redirect to login
       // window.location.href = '/login'; 
     }
     return Promise.reject(error);

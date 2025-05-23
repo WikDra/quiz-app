@@ -1,809 +1,147 @@
-import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
-import { API_BASE_URL, API_ENDPOINTS, STORAGE_KEYS, USER_LEVELS } from '../utils/constants';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { authApi } from '../utils/apiUtils';
 
 const AuthContext = createContext(null);
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [users, setUsers] = useState([]);
   const [error, setError] = useState(null);
-  const [tokenRefreshTimer, setTokenRefreshTimer] = useState(null);
 
-  // Create refs for functions that have circular dependencies
-  const scheduleTokenRefreshRef = useRef(() => {});
-  const verifyAuthStateRef = useRef(() => {});
-  const refreshTokenRef = useRef(() => {});
-  const logoutRef = useRef(() => {});
+  // Check authentication status on mount
+  useEffect(() => {
+    checkAuthStatus();
+  }, []);
 
-  // Wylogowanie użytkownika
-  const logout = useCallback(async () => {
+  const checkAuthStatus = useCallback(async () => {
     try {
-      // Clear token refresh timer
-      if (tokenRefreshTimer) {
-        clearTimeout(tokenRefreshTimer);
-        setTokenRefreshTimer(null);
-      }
+      setLoading(true);
+      const response = await authApi.checkAuth();
       
-      // Call the API to clear cookies
-      const response = await fetch(`${API_BASE_URL}/api/logout`, {
-        method: 'POST',
-        credentials: 'include',
-        headers: {
-          'Content-Type': 'application/json',
-        }
-      });
-      
-      if (!response.ok) {
-        console.warn("API logout endpoint nie zwrócił poprawnej odpowiedzi:", response.status);
+      if (response.success && response.authenticated) {
+        setUser(response.user);
+      } else {
+        setUser(null);
       }
     } catch (error) {
-      console.error("Błąd podczas wylogowywania:", error);
-    } finally {
-      // Clear local state regardless of API success
+      console.error('Error checking auth status:', error);
       setUser(null);
-      localStorage.removeItem(STORAGE_KEYS.USER);
-      
-      // Opcjonalnie przekieruj na stronę logowania
-      if (window.location.pathname !== '/login') {
-        window.location.href = '/login';
-      }
-    }
-  }, [API_BASE_URL, tokenRefreshTimer]);
-  
-  // Update ref to point to the latest version of the function
-  logoutRef.current = logout;
-
-  // Funkcja do sprawdzania, czy użytkownik jest zalogowany poprzez weryfikację JWT
-  const verifyAuthState = useCallback(async () => {
-    const MIN_INTERVAL = 5000; // 5 seconds between checks
-    const lastVerifyTime = localStorage.getItem('lastAuthVerifyTime');
-    const now = Date.now();
-
-    if (lastVerifyTime) {
-      const timeSinceLastVerify = now - parseInt(lastVerifyTime, 10);
-      if (timeSinceLastVerify < MIN_INTERVAL) {
-        // Use cached state if available
-        const cachedUser = localStorage.getItem(STORAGE_KEYS.USER);
-        if (cachedUser) {
-          try {
-            const parsedUser = JSON.parse(cachedUser);
-            if (parsedUser && parsedUser.id) {
-              return true;
-            }
-          } catch (err) {
-            console.warn('Invalid cached user data:', err);
-          }
-        }
-        return false;
-      }
-    }
-
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 5000); // 5s timeout
-
-      const response = await fetch(`${API_BASE_URL}/api/users/me/profile`, {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        credentials: 'include',
-        signal: controller.signal
-      });
-
-      clearTimeout(timeoutId);
-      localStorage.setItem('lastAuthVerifyTime', now.toString());
-      
-      if (response.ok) {
-        const userData = await response.json();
-        const sanitizedUser = {
-          ...userData,
-          avatar: userData.avatar_url || userData.avatar || 'https://i.pravatar.cc/150?img=3',
-          fullName: userData.username || userData.fullName || 'User',
-          level: userData.level || 'Początkujący',
-          stats: userData.stats || {
-            quizzes: 0,
-            bestTime: '0min',
-            correctAnswers: 0
-          },
-          lastVerified: now
-        };
-        
-        setUser(sanitizedUser);
-        localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(sanitizedUser));
-        
-        if (!tokenRefreshTimer) {
-          scheduleTokenRefreshRef.current();
-        }
-        return true;
-      } else {
-        if (response.status === 401) {
-          setUser(null);
-          localStorage.removeItem(STORAGE_KEYS.USER);
-          return false;
-        }
-        // For other errors, try to use cached data
-        const cachedUser = localStorage.getItem(STORAGE_KEYS.USER);
-        if (cachedUser) {
-          try {
-            const parsedUser = JSON.parse(cachedUser);
-            if (parsedUser && parsedUser.id && now - parsedUser.lastVerified < 24 * 60 * 60 * 1000) {
-              console.warn('Using cached auth state due to API error');
-              return true;
-            }
-          } catch (err) {
-            console.warn('Invalid cached user data:', err);
-          }
-        }
-        setUser(null);
-        localStorage.removeItem(STORAGE_KEYS.USER);
-        return false;
-      }
-    } catch (err) {
-      console.error('Błąd podczas weryfikacji stanu uwierzytelniania:', err);
-      const cachedUser = localStorage.getItem(STORAGE_KEYS.USER);
-      if (err.name === 'AbortError' || err.message.includes('Failed to fetch')) {
-        if (cachedUser) {
-          try {
-            const parsedUser = JSON.parse(cachedUser);
-            if (parsedUser && parsedUser.id && now - parsedUser.lastVerified < 24 * 60 * 60 * 1000) {
-              console.warn('Using cached auth state due to network error');
-              return true;
-            }
-          } catch (parseErr) {
-            console.warn('Invalid cached user data:', parseErr);
-          }
-        }
-      }
-      setUser(null);
-      localStorage.removeItem(STORAGE_KEYS.USER);
-      return false;
-    }
-  }, [API_BASE_URL, tokenRefreshTimer]);
-
-  // Update ref to point to the latest version of the function
-  verifyAuthStateRef.current = verifyAuthState;
-
-  // Function to refresh token when it's about to expire
-  const refreshToken = useCallback(async () => {
-    try {
-      console.log("Attempting to refresh access token...");
-      
-      // Check if we have a recent refresh to avoid rate limiting
-      const lastRefreshTime = localStorage.getItem('lastTokenRefresh');
-      const now = Date.now();
-      if (lastRefreshTime) {
-        const timeSinceLastRefresh = now - parseInt(lastRefreshTime, 10);
-        if (timeSinceLastRefresh < 30000) { // 30 seconds minimum between refreshes
-          console.log("Skipping token refresh - too soon since last refresh");
-          return true;
-        }
-      }
-
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 5000); // 5s timeout
-
-      // Attempt to refresh token
-      const response = await fetch(`${API_BASE_URL}/api/token/refresh`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        credentials: 'include', // Important: needed for cookies
-        signal: controller.signal
-      });
-      
-      clearTimeout(timeoutId);
-      
-      if (response.ok) {
-        const data = await response.json();
-        console.log("Access token refreshed successfully");
-        
-        if (data.token_status?.issued_at) {
-          const expirationTime = new Date(data.token_status.issued_at).getTime() + (60 * 60 * 1000);
-          localStorage.setItem('tokenExpiration', expirationTime.toString());
-          localStorage.setItem('lastTokenRefresh', now.toString());
-        }
-        
-        scheduleTokenRefreshRef.current();
-        return true;
-      } else {
-        const errorText = await response.text();
-        console.error("Failed to refresh token:", errorText);
-        if (response.status === 401) {
-          console.warn("Token refresh failed with 401, logging out");
-          await logoutRef.current();
-          return false;
-        }
-        const isStillValid = await verifyAuthStateRef.current();
-        if (!isStillValid) {
-          console.warn("Auth state invalid after token refresh failure, logging out");
-          await logoutRef.current();
-        }
-        return false;
-      }
-    } catch (err) {
-      console.error('Error refreshing token:', err);
-      if (err.name === 'AbortError') {
-        console.warn('Token refresh request timed out');
-      }
-      return false;
-    }
-  }, [API_BASE_URL]);
-
-  // Update ref to point to the latest version of the function
-  refreshTokenRef.current = refreshToken;
-
-  // Schedule token refresh function with debouncing and error prevention
-  const scheduleTokenRefresh = useCallback(() => {
-    // Clear any existing timer first
-    if (tokenRefreshTimer) {
-      clearTimeout(tokenRefreshTimer);
-      setTokenRefreshTimer(null);
-    }
-
-    // Prevent too frequent scheduling attempts
-    const lastScheduleTime = localStorage.getItem('lastTokenRefreshSchedule');
-    const lastRefreshTime = localStorage.getItem('lastTokenRefresh');
-    const now = Date.now();
-
-    // Don't schedule if we recently did a refresh or schedule
-    const MIN_INTERVAL = 30000; // 30 seconds
-    if (lastScheduleTime && now - parseInt(lastScheduleTime, 10) < MIN_INTERVAL) {
-      return;
-    }
-    if (lastRefreshTime && now - parseInt(lastRefreshTime, 10) < MIN_INTERVAL) {
-      return;
-    }
-
-    const tokenExp = localStorage.getItem('tokenExpiration');
-    
-    if (tokenExp) {
-      const expirationTime = parseInt(tokenExp, 10);
-      if (expirationTime > now) {
-        const timeUntilExpiry = expirationTime - now;
-        const REFRESH_MARGIN = 5 * 60 * 1000; // 5 minutes before expiry
-        
-        if (timeUntilExpiry > REFRESH_MARGIN) {
-          const refreshTime = timeUntilExpiry - REFRESH_MARGIN;
-          const timer = setTimeout(() => {
-            refreshTokenRef.current().catch(err => {
-              console.error('Error in scheduled token refresh:', err);
-            });
-          }, refreshTime);
-          
-          setTokenRefreshTimer(timer);
-          localStorage.setItem('lastTokenRefreshSchedule', now.toString());
-          console.log(`Token refresh scheduled in ${Math.round(refreshTime/60000)} minutes`);
-          return;
-        }
-      }
-    }
-
-    // If we got here, we either have no expiration time or it's too close/passed
-    console.log('No valid token expiration time found or too close to expiry, refreshing token now');
-    refreshTokenRef.current().catch(err => {
-      console.error('Error in immediate token refresh:', err);
-    });
-  }, [tokenRefreshTimer]);
-
-  // Update ref to point to the latest version of the function
-  scheduleTokenRefreshRef.current = scheduleTokenRefresh;
-
-  // Funkcja do pobierania danych użytkowników
-  const fetchUsers = useCallback(async () => {
-    // Check if we have recent user data in cache
-    const lastUsersFetch = localStorage.getItem('lastUsersFetch');
-    const now = Date.now();
-    if (lastUsersFetch && now - parseInt(lastUsersFetch, 10) < 30000) { // 30s cache
-      const cachedUsers = localStorage.getItem('cachedUsers');
-      if (cachedUsers) {
-        const parsedUsers = JSON.parse(cachedUsers);
-        setUsers(parsedUsers);
-        setError(null);
-        return;
-      }
-    }
-
-    try {
-      const response = await fetch(API_ENDPOINTS.USERS, {
-        credentials: 'include' // Include cookies with request
-      });
-      if (!response.ok) throw new Error('Failed to load users');
-      const data = await response.json();
-      const usersList = data.users || [];
-      setUsers(usersList);
-      setError(null);
-      
-      // Cache the results
-      localStorage.setItem('cachedUsers', JSON.stringify(usersList));
-      localStorage.setItem('lastUsersFetch', now.toString());
-    } catch (err) {
-      console.error('Error loading users:', err);
-      setError('Failed to load user data. Please try again later.');
     } finally {
       setLoading(false);
     }
   }, []);
-    // Function to sync user state with backend and tokens
-  const refreshUserState = useCallback(async () => {
-    const MIN_UPDATE_INTERVAL = 30000; // 30 seconds
-    const lastUpdate = localStorage.getItem('lastUserStateUpdate');
-    const now = Date.now();
 
-    // Check cache validity
-    if (lastUpdate) {
-      const timeSinceLastUpdate = now - parseInt(lastUpdate, 10);
-      if (timeSinceLastUpdate < MIN_UPDATE_INTERVAL) {
-        const cachedUser = localStorage.getItem(STORAGE_KEYS.USER);
-        if (cachedUser) {
-          try {
-            const parsedUser = JSON.parse(cachedUser);
-            if (parsedUser && parsedUser.id) { // Basic validation
-              return true;
-            }
-          } catch (err) {
-            console.warn('Invalid cached user data:', err);
-          }
-        }
-      }
-    }
-
+  const login = useCallback(async (credentials) => {
     try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 5000); // 5s timeout
-
-      const response = await fetch(`${API_BASE_URL}/api/users/me/profile`, {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        credentials: 'include',
-        signal: controller.signal
-      });
-      
-      clearTimeout(timeoutId);
-      
-      if (response.ok) {
-        const userData = await response.json();
-        
-        // Handle token expiration if provided
-        if (userData.token_exp) {
-          const expirationTime = userData.token_exp * 1000;
-          localStorage.setItem('tokenExpiration', expirationTime.toString());
-          
-          // Schedule refresh if needed
-          if (!tokenRefreshTimer && expirationTime > now) {
-            scheduleTokenRefresh();
-          }
-        }
-        
-        // Sanitize and normalize user data
-        const sanitizedUser = {
-          ...userData,
-          avatar: userData.avatar_url || userData.avatar || 'https://i.pravatar.cc/150?img=3',
-          fullName: userData.username || userData.fullName || 'User',
-          level: userData.level || USER_LEVELS.BEGINNER,
-          stats: {
-            quizzes: userData.stats?.quizzes || 0,
-            bestTime: userData.stats?.bestTime || '0min',
-            correctAnswers: userData.stats?.correctAnswers || 0
-          },
-          lastUpdated: now
-        };
-        
-        setUser(sanitizedUser);
-        localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(sanitizedUser));
-        localStorage.setItem('lastUserStateUpdate', now.toString());
-        
-        return true;
-      } else {
-        if (response.status === 401) {
-          // Token likely expired or invalid
-          await logoutRef.current();
-        } else {
-          console.error('Error refreshing user state:', await response.text());
-        }
-        setUser(null);
-        localStorage.removeItem(STORAGE_KEYS.USER);
-        return false;
-      }
-    } catch (err) {
-      console.error('Error refreshing user state:', err);
-      
-      // Use localStorage as fallback only for network/timeout errors
-      if (err.name === 'AbortError' || err.message.includes('Failed to fetch')) {
-        const storedUser = localStorage.getItem(STORAGE_KEYS.USER);
-        if (storedUser) {
-          try {
-            const userData = JSON.parse(storedUser);
-            if (userData && userData.id && now - userData.lastUpdated < 24 * 60 * 60 * 1000) { // 24h max cache
-              setUser(userData);
-              console.warn('Using cached user data as fallback - will verify ASAP');
-              return true;
-            }
-          } catch (parseErr) {
-            console.error('Error parsing cached user data:', parseErr);
-          }
-        }
-      }
-      
-      setUser(null);
-      localStorage.removeItem(STORAGE_KEYS.USER);
-      return false;
-    }
-  }, [API_BASE_URL, scheduleTokenRefresh, tokenRefreshTimer]);
-  // Helper function to update the auth state based on current tokens (now cookies)
-  const updateAuthStateFromTokens = useCallback(async () => {
-    // Check if we have a recent update to avoid unnecessary API calls
-    const lastAuthUpdate = localStorage.getItem('lastAuthUpdate');
-    const now = Date.now();
-    if (lastAuthUpdate) {
-      const timeSinceLastUpdate = now - parseInt(lastAuthUpdate, 10);
-      if (timeSinceLastUpdate < 30000) { // 30 seconds cache
-        return true;
-      }
-    }
-
-    try {
-      // Make an API call to get fresh user data - now uses cookies
-      const response = await fetch(`${API_BASE_URL}/api/users/me/profile`, {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        credentials: 'include' // Include cookies with request
-      });
-      if (response.ok) {
-        const data = await response.json();
-        
-        // Ensure user data has all required fields with proper structure
-        const userData = {
-          ...data,
-          // Make sure both avatar and fullName are set correctly
-          avatar: data.avatar_url || data.avatar || 'https://i.pravatar.cc/150?img=3',
-          fullName: data.username || data.fullName || 'User',
-          level: data.level || 'Początkujący',
-          // Ensure stats structure is consistent
-          stats: data.stats || {
-            quizzes: 0,
-            bestTime: '0min',
-            correctAnswers: 0
-          }
-        };
-
-        setUser(userData);
-        localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(userData));        localStorage.setItem('lastAuthUpdate', now.toString());
-        return true;
-      } else {
-        console.error('Failed to fetch user profile:', await response.text());
-        // Explicitly clear user state when API request fails
-        setUser(null);
-        localStorage.removeItem(STORAGE_KEYS.USER);
-      }
-    } catch (err) {
-      console.error('Failed to update auth state from token:', err);
-      // Use cached data if available
-      const cachedUser = localStorage.getItem(STORAGE_KEYS.USER);
-      if (cachedUser) {
-        try {
-          setUser(JSON.parse(cachedUser));
-          return true;
-        } catch (parseErr) {
-          console.error('Error parsing cached user data:', parseErr);
-        }
-      }
-    }
-    return false;
-  }, [API_BASE_URL]);  // Pierwsze ładowanie i okresowe sprawdzanie stanu uwierzytelniania
-  useEffect(() => {
-    let checkTimer = null;
-    const CHECK_INTERVAL = 60000; // Check every minute
-
-    async function initialAuthCheck() {
       setLoading(true);
-      try {
-        const isAuthenticated = await verifyAuthState();
-        
-        if (!isAuthenticated) {
-          setUser(null); // Explicitly set user to null if not authenticated
-          if (localStorage.getItem(STORAGE_KEYS.USER)) {
-            console.log('Wykryto dane użytkownika w localStorage, ale token JWT jest nieważny. Usuwanie danych...');
-            localStorage.removeItem(STORAGE_KEYS.USER);
-          }
-        }
-      } catch (err) {
-        console.error('Błąd podczas początkowego sprawdzania uwierzytelniania:', err);
-        setUser(null); // Also ensure user is null on error
-        localStorage.removeItem(STORAGE_KEYS.USER);
-      } finally {
-        setLoading(false);
+      setError(null);
+      
+      const response = await authApi.login(credentials);
+      
+      if (response.success) {
+        setUser(response.user);
+        return { success: true, message: response.message };
+      } else {
+        setError(response.message);
+        return { success: false, message: response.message };
       }
-    }
-    
-    // Initial check
-    initialAuthCheck();
-
-    // Clear any previous timer if dependency changes
-    if (checkTimer) {
-      clearInterval(checkTimer);
-      checkTimer = null;
-    }
-
-    // Only set up periodic checks if user is logged in
-    if (user) {
-      checkTimer = setInterval(() => {
-        console.log("AuthContext: Performing periodic auth check...");
-        verifyAuthStateRef.current().catch(err => {
-          console.error('Error in periodic auth check:', err);
-        });
-      }, CHECK_INTERVAL);
-    }
-    
-    return () => {
-      if (checkTimer) {
-        clearInterval(checkTimer);
-      }
-    };
-  }, [user, verifyAuthState]); // Include verifyAuthState in dependencies
-  
-  // Zapisywanie użytkowników
-  const saveUsers = useCallback(async (updatedUsers) => {
-    try {
-      const response = await fetch(API_ENDPOINTS.USERS, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        credentials: 'include', // Include cookies with request
-        body: JSON.stringify({ users: updatedUsers }),
-      });
-      if (!response.ok) throw new Error('Failed to save users');
-      return true;
     } catch (error) {
-      console.error('Error saving users:', error);
-      setError('Failed to save user data. Please try again later.');
+      const errorMessage = error.message || 'Błąd podczas logowania';
+      setError(errorMessage);
+      return { success: false, message: errorMessage };
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  const register = useCallback(async (userData) => {
+    try {
+      setLoading(true);
+      setError(null);
+      
+      const response = await authApi.register(userData);
+      
+      if (response.success) {
+        setUser(response.user);
+        return { success: true, message: response.message };
+      } else {
+        setError(response.message);
+        return { success: false, message: response.message, errors: response.errors };
+      }
+    } catch (error) {
+      const errorMessage = error.message || 'Błąd podczas rejestracji';
+      setError(errorMessage);
+      return { success: false, message: errorMessage };
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  const logout = useCallback(async () => {
+    try {
+      await authApi.logout();
+    } catch (error) {
+      console.error('Error during logout:', error);
+    } finally {
+      setUser(null);
+      setError(null);
+    }
+  }, []);
+
+  const updateUser = useCallback((updatedUser) => {
+    setUser(updatedUser);
+  }, []);
+
+  const clearError = useCallback(() => {
+    setError(null);
+  }, []);
+
+  const verifyAuthState = useCallback(async () => {
+    try {
+      const response = await authApi.checkAuth();
+      return response.success && response.authenticated;
+    } catch (error) {
+      console.error('Error verifying auth state:', error);
       return false;
     }
-  }, []);  // Rejestracja użytkownika - zaktualizowana funkcja, aby korzystała z nowego API
-  const register = useCallback(async (fullName, email, password) => {
+  }, []);
+  // For cookie-based auth
+  const refreshToken = useCallback(async () => {
     try {
-      if (!fullName?.trim() || !email?.trim() || !password?.trim()) {
-        return { success: false, error: 'Wszystkie pola są wymagane' };
+      const response = await authApi.refreshToken();      
+      if (response.success) {
+        setUser(response.user);
+        return true;
       }
-      
-      // Bezpośrednie wywołanie do API rejestracji
-      const response = await fetch(`${API_BASE_URL}/api/register`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        credentials: 'include', // Include cookies with request
-        body: JSON.stringify({ 
-          username: fullName, // Send fullName as username which backend expects
-          email, 
-          password 
-        }),
-      });
-      
-      const data = await response.json();
-      
-      if (!response.ok) {
-        return { 
-          success: false, 
-          error: data.error || 'Wystąpił błąd podczas rejestracji' 
-        };
-      }
-      
-      // Po udanej rejestracji odświeżamy listę użytkowników
-      await fetchUsers();
-      
-      // Ustawiamy zalogowanego użytkownika
-      setUser(data);
-      localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(data));
-      
-      return { success: true };
+      return false;
     } catch (error) {
-      return { 
-        success: false, 
-        error: error.message || 'Wystąpił błąd podczas rejestracji' 
-      };
+      console.error('Error refreshing session:', error);
+      return false;
     }
-  }, [fetchUsers]);
-    // Zaktualizowana funkcja logowania
-  const login = useCallback(async (email, password) => {
-    try {
-      if (!email?.trim() || !password?.trim()) {
-        return { success: false, error: 'Email i hasło są wymagane' };
-      }
-      
-      console.log("AuthContext: Wysyłanie żądania logowania do API...");
-      
-      // Bezpośrednie wywołanie do API logowania
-      const response = await fetch(`${API_BASE_URL}/api/login`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        credentials: 'include', // Include cookies in request
-        body: JSON.stringify({ email, password }),
-      });
-      
-      console.log("AuthContext: Otrzymano odpowiedź z API:", response.status, response.statusText);
-      
-      const data = await response.json();
-      console.log("AuthContext: Dane odpowiedzi:", { 
-        success: response.ok, 
-        hasUserData: !!data.user_data,
-        error: data.error || null
-      });
-      
-      if (!response.ok) {
-        return { 
-          success: false, 
-          error: data.error || 'Nieprawidłowy email lub hasło' 
-        };
-      }
-      
-      // Ustawiamy zalogowanego użytkownika
-      if (data.user_data) {
-        console.log("AuthContext: Ustawianie danych użytkownika");
-        setUser(data.user_data);
-        localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(data.user_data));
-        
-        // Set up token refresh schedule
-        scheduleTokenRefresh();
-      } else {
-        console.warn("AuthContext: Brak danych użytkownika w odpowiedzi API");
-      }
-      
-      return { success: true };
-    } catch (error) {
-      console.error("AuthContext: Błąd podczas logowania:", error);
-      return { 
-        success: false, 
-        error: error.message || 'Wystąpił błąd podczas logowania' 
-      };
-    }  }, [API_BASE_URL, scheduleTokenRefresh]);
+  }, [setUser]);
 
-  // Aktualizacja awatara użytkownika
-  const updateUserAvatar = useCallback(async (userId, avatarUrl) => {
-    try {
-      // Basic URL validation
-      if (!avatarUrl || !avatarUrl.startsWith('http')) {
-        return {
-          success: false,
-          error: 'Podaj prawidłowy URL awatara (musi zaczynać się od http:// lub https://)'
-        };
-      }
-      
-      const response = await fetch(`${API_BASE_URL}/api/users/${userId}/avatar`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        credentials: 'include', // Include cookies with request
-        body: JSON.stringify({ avatar_url: avatarUrl }),
-      });
-      
-      const data = await response.json();
-      
-      if (!response.ok) {
-        console.error("Failed to update avatar:", data.error);
-        return { 
-          success: false, 
-          error: data.error || 'Nie udało się zaktualizować awatara' 
-        };
-      }
-      
-      // Jeśli aktualizowany jest aktualnie zalogowany użytkownik, zaktualizuj również stan
-      if (user && user.id === userId) {
-        const updatedUser = { 
-          ...user, 
-          avatar: avatarUrl,
-          avatar_url: avatarUrl  // Update both fields to ensure consistency
-        };
-        setUser(updatedUser);
-        localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(updatedUser));
-      }
-      
-      // Zaktualizuj również listę użytkowników
-      setUsers(prevUsers => prevUsers.map(u => 
-        u.id === userId ? { 
-          ...u, 
-          avatar: avatarUrl, 
-          avatar_url: avatarUrl  // Update both fields
-        } : u
-      ));
-      
-      return { success: true };
-    } catch (error) {
-      console.error("Error updating avatar:", error);
-      return { 
-        success: false, 
-        error: error.message || 'Wystąpił błąd podczas aktualizacji awatara' 
-      };
-    }
-  }, [user, API_BASE_URL, setUsers]);
+  // Check if user has premium access
+  const isPremium = user?.is_premium || false;
+  const isAdmin = user?.is_admin || false;
 
-  const updateUserData = useCallback(async (userId, userData) => {
-    try {
-      // Jeśli aktualizacja dotyczy tylko awatara, użyj dedykowanej funkcji
-      if (userData.avatar && Object.keys(userData).length === 1) {
-        return updateUserAvatar(userId, userData.avatar);
-      }
-      
-      // Use the user-specific update endpoint instead of updating all users at once
-      const response = await fetch(`${API_BASE_URL}/api/users/${userId}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        credentials: 'include', // Include cookies with request
-        body: JSON.stringify({
-          // Map fullName to username which backend expects
-          username: userData.fullName,
-          email: userData.email
-        }),
-      });
-      
-      const data = await response.json();
-      
-      if (!response.ok) {
-        console.error("Failed to update user data:", data.error);
-        return { success: false, error: data.error || 'Nie udało się zaktualizować danych użytkownika' };
-      }
-      
-      // Update the user in the local state
-      if (user && user.id === userId) {
-        const updatedUser = { 
-          ...user,
-          username: userData.fullName || user.username,
-          fullName: userData.fullName || user.fullName,
-          email: userData.email || user.email
-        };
-        
-        setUser(updatedUser);
-        localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(updatedUser));
-      }
-      
-      return { success: true };
-    } catch (error) {
-      console.error("Error updating user data:", error);
-      return { success: false, error: error.message || 'Wystąpił błąd podczas aktualizacji danych' };
-    }
-  }, [user, API_BASE_URL, updateUserAvatar]);
-
-  // Komponent ładowania
-  if (loading) {
-    return (
-      <div className="loading-container">
-        <div className="spinner"></div>
-        <p>Ładowanie danych...</p>
-      </div>
-    );
-  }
-  const contextValue = {
+  const value = {
     user,
-    users,
     loading,
     error,
+    isPremium,
+    isAdmin,
     login,
-    logout,
     register,
-    updateUserData,
-    updateUserAvatar,
-    fetchUsers,
-    saveUsers,
-    refreshUserState,
-    updateAuthStateFromTokens,
+    logout,
+    updateUser,
+    clearError,
+    checkAuthStatus,
     verifyAuthState,
     refreshToken
   };
 
   return (
-    <AuthContext.Provider value={contextValue}>
+    <AuthContext.Provider value={value}>
       {children}
     </AuthContext.Provider>
   );

@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Login</title>
+</head>
+<body>
+    <h1>Test Login API</h1>
+    <button onclick="testLogin()">Test Login with admin@quiz-app.com</button>
+    <div id="result"></div>
+
+    <script>
+        async function testLogin() {
+            const resultDiv = document.getElementById('result');
+            
+            try {
+                // Get CSRF token first
+                const csrfResponse = await fetch('http://localhost:5000/api/auth/csrf-token', {
+                    method: 'GET',
+                    credentials: 'include'
+                });
+                const csrfData = await csrfResponse.json();
+                console.log('CSRF token:', csrfData.csrf_token);
+                
+                // Try login
+                const loginResponse = await fetch('http://localhost:5000/api/auth/login', {
+                    method: 'POST',
+                    credentials: 'include',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': csrfData.csrf_token
+                    },
+                    body: JSON.stringify({
+                        email: 'admin@quiz-app.com',
+                        password: 'admin123',
+                        remember_me: false
+                    })
+                });
+                
+                const loginData = await loginResponse.json();
+                console.log('Login response:', loginData);
+                
+                resultDiv.innerHTML = `
+                    <h3>Login Result:</h3>
+                    <pre>${JSON.stringify(loginData, null, 2)}</pre>
+                    <p>Status: ${loginResponse.status}</p>
+                `;
+                
+            } catch (error) {
+                console.error('Error:', error);
+                resultDiv.innerHTML = `<p style="color: red;">Error: ${error.message}</p>`;
+            }
+        }
+    </script>
+</body>
+</html>
