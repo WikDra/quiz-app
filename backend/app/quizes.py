@@ -5,6 +5,7 @@ from flask import request, jsonify, make_response
 from utils.helpers import sanitize_input
 from flask_jwt_extended import jwt_required, get_jwt_identity
 import logging
+from .models import User
 
 class GetQuizzes(Resource):
     def get(self):
@@ -95,16 +96,19 @@ class QuizResource(Resource):
             
             # Add current user ID as author
             current_user_id = get_jwt_identity()
+            
             data['author_id'] = current_user_id
-            
-            # Create quiz using QuizController
-            quiz, error = QuizController.create_quiz(data)
-            
-            if error:
-                logging.error(f"Error creating quiz: {error}")
-                return {'error': error}, 400
-            
-            return quiz, 201
+            user = User.query.filter_by(google_id=current_user_id).first()
+            if user:
+                data['author_id'] = user.id
+                # Create quiz using QuizController
+                quiz, error = QuizController.create_quiz(data)
+                
+                if error:
+                    logging.error(f"Error creating quiz: {error}")
+                    return {'error': error}, 400
+                
+                return quiz, 201
             
         except Exception as e:
             logging.error(f"Error creating quiz: {str(e)}")
@@ -173,4 +177,66 @@ class QuizResource(Resource):
             
         except Exception as e:
             logging.error(f"Error deleting quiz {quiz_id}: {str(e)}")
+            return {'error': 'Internal server error'}, 500
+class OptionsQuizResource(Resource):
+    @jwt_required(locations=["cookies"])
+    def options(self, quiz_id=None):
+        """Handle OPTIONS requests for CORS preflight"""
+        response = make_response('', 200)
+        response.headers['Allow'] = 'GET, POST, PUT, DELETE, OPTIONS'
+        response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS'
+        response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'
+        return response
+    @jwt_required(locations=["cookies"])
+    def put(self, quiz_id):
+        """Update existing quiz"""
+        try:
+            data = request.get_json()
+            logging.info(f"Received update data: {data}")
+            
+            if not data:
+                return {'error': 'No data provided'}, 400
+            
+            # Check if user is quiz author or admin
+            current_user_id = get_jwt_identity()
+            key, quiz = QuizController.get_quiz_by_id(quiz_id)
+            logging.info(f"quiz: {key.get('author_id')}")
+            id = key.get('id')
+            author_id = key.get("author_id")
+            if not id:
+                logging.error(f"Quiz {quiz_id} not found")
+                return {'error': 'Quiz not found'}, 404
+            
+            # Convert quiz to dictionary if it's a tuple
+            if isinstance(quiz, tuple):
+                quiz_dict = {
+                    'id': key.get('id'),
+                    'author_id': quiz.get["author_id"],
+                    # Add other fields as needed based on your quiz structure
+                }
+                quiz = quiz_dict
+            
+                user = User.query.filter_by(google_id=current_user_id).first()
+                if user:
+                    user = user.id
+                    logging.info(f"Current user ID: {user}")
+                    
+                    # Check permissions
+                    if not (hasattr(user, 'is_admin') and user.is_admin):
+                        if author_id not in quiz or author_id != user:
+                            logging.info(f"{quiz.get('author_id')}")
+                            logging.warning(f"User {user} attempted to update quiz {quiz_id} without permission")
+                            return {'error': 'You do not have permission to update this quiz'}, 403
+                    
+                    # Update quiz using QuizController
+                    updated_quiz, error = QuizController.update_quiz(quiz_id, data)
+                    
+                    if error:
+                        logging.error(f"Error updating quiz: {error}")
+                        return {'error': error}, 400
+                    
+                    return updated_quiz, 200
+            
+        except Exception as e:
+            logging.error(f"Error updating quiz {quiz_id}: {str(e)}", exc_info=True)
             return {'error': 'Internal server error'}, 500

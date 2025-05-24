@@ -70,7 +70,7 @@ class User(db.Model):
 
     def set_password(self, password):
         """Set password hash"""
-        self.password_hash = generate_password_hash(password).decode('utf-8')
+        self.password_hash = generate_password_hash(password)
         
     def check_password(self, password):
         """Check password against hash"""
@@ -96,3 +96,64 @@ class User(db.Model):
                 'correctAnswers': 0
             }
         }
+
+class StripeSubscription(db.Model):
+    __tablename__ = 'stripe_subscriptions'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    stripe_subscription_id = db.Column(db.String(255), unique=True)
+    stripe_customer_id = db.Column(db.String(255), unique=True)
+    status = db.Column(db.String(50), nullable=False)  # active, canceled, past_due
+    current_period_start = db.Column(db.DateTime, nullable=False)
+    current_period_end = db.Column(db.DateTime, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    canceled_at = db.Column(db.DateTime, nullable=True)
+    
+    # Relationship
+    user = db.relationship('User', backref=db.backref('stripe_subscription', uselist=False))
+    
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'user_id': self.user_id,
+            'stripe_subscription_id': self.stripe_subscription_id,
+            'stripe_customer_id': self.stripe_customer_id,
+            'status': self.status,
+            'current_period_start': self.current_period_start.isoformat() if self.current_period_start else None,
+            'current_period_end': self.current_period_end.isoformat() if self.current_period_end else None,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'canceled_at': self.canceled_at.isoformat() if self.canceled_at else None
+        }
+
+def _process_subscription_by_email(customer_email, session):
+    """Helper function to process subscription by email"""
+    user = User.query.filter_by(email=customer_email).first()
+    if user:
+        subscription = StripeSubscription.query.filter_by(user_id=user.id).first()
+        
+        if not subscription:
+            subscription = StripeSubscription(
+                user_id=user.id,
+                stripe_customer_id=session.get('customer'),
+                stripe_subscription_id=session.get('subscription'),
+                status='active',
+                current_period_start=datetime.utcnow(),
+                current_period_end=datetime.utcnow() + timedelta(days=30)
+            )
+            db.session.add(subscription)
+        else:
+            subscription.status = 'active'
+            subscription.stripe_customer_id = session.get('customer')
+            subscription.stripe_subscription_id = session.get('subscription')
+            subscription.current_period_start = datetime.utcnow()
+            subscription.current_period_end = datetime.utcnow() + timedelta(days=30)
+        
+        user.has_premium_access = True
+        if not user.premium_since:
+            user.premium_since = datetime.utcnow()
+        
+        db.session.commit()
+        current_app.logger.info(f"Subscription created/updated for user {user.id} (via email)")
+    else:
+        current_app.logger.warning(f"User with email {customer_email} not found after payment.")

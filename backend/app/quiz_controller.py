@@ -1,5 +1,5 @@
 import re
-from flask import current_app
+from flask import current_app, jsonify
 from .models import db, User, Quiz
 import json
 from utils.helpers import sanitize_input, validate_email

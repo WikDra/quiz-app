@@ -1,66 +1,122 @@
 from flask import request, jsonify, make_response, url_for, redirect
 from flask_restful import Resource
-from .models import db, User
 from .extensions import oauth2
 from flask_jwt_extended import create_access_token, jwt_required, create_refresh_token, get_jwt_identity, get_jwt
 import logging
-import re
 import os
+from .user_controller import UserController
+from .models import User, db
+from utils.helpers import sanitize_input, validate_email
 from .quiz_controller import QuizController
 logging.basicConfig(level=logging.DEBUG)
 
-
-
-
-
 class RegisterResource(Resource):
     def post(self):
-        data = request.get_json()
-        username = data.get('username')
-        email = data.get('email')
-        password = data.get('password')
-        valid = re.match(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$', email)
-        if not username or not valid or not password:
-            return {'message': 'All fields are required'}, 400
+        """Register new user"""
+        try:
+            data = request.get_json()
+            logging.info(f"Received registration data: {data}")
+            if not data:
+                return {'error': 'No data provided'}, 400
+            
+            user, error = UserController.register_user(data)
+            if error:
+                return {'error': error}, 409 if "already exists" in error else 400
+                
+            # Create JWT tokens with string identity
+            access_token = create_access_token(identity=str(user.id))
+            refresh_token = create_refresh_token(identity=str(user.id))
 
-        if User.query.filter_by(username=username).first() or User.query.filter_by(email=email).first():
-            return {'message': 'Username or email already exists'}, 400
+            # Create response with make_response
+            user_data = user.to_dict()
+            resp = make_response({
+                'message': 'Registration successful',
+                'user': user_data
+            })
 
-        new_user = User(username=username, email=email)
-        new_user.set_password(password)
-        db.session.add(new_user)
-        db.session.commit()
+            # Set access token as HTTP-only cookie
+            resp.set_cookie(
+                'access_token_cookie', 
+                access_token, 
+                httponly=True, 
+                secure=False,  # For localhost development
+                samesite='Lax',  # Changed from None to Lax for localhost
+                path='/'
+            )
+            
+            # Set refresh token as HTTP-only cookie
+            resp.set_cookie(
+                'refresh_token_cookie', 
+                refresh_token, 
+                httponly=True, 
+                secure=False,  # For localhost development
+                samesite='Lax',  # Changed from None to Lax for localhost
+                path='/'
+            )
+            
+            return resp
 
-        return {'message': 'User registered successfully'}, 201
+        except Exception as e:
+            logging.error(f"Registration error: {str(e)}")
+            return {'error': 'Internal server error'}, 500
+
 class LoginResource(Resource):
     def post(self):
-        # Pobieranie danych z żądania
-        data = request.get_json()
-        
-        if not data:
-            return make_response(jsonify({'message': 'No JSON data provided'}), 400)
+        """Login user"""
+        try:
+            data = request.get_json()
+            logging.info(f"Login request data: {data}")
+            
+            if not data:
+                logging.warning("No data provided in login request")
+                return {'error': 'No data provided'}, 400
+            
+            email = data.get('email')
+            password = data.get('password')
+            logging.info(f"Extracted email: {email}, password length: {len(password) if password else 0}")
+            
+            user, error = UserController.login_user(email, password)
+            if error:
+                logging.warning(f"Login failed: {error}")
+                status_code = 401 if "Invalid email or password" in error else 400
+                return {'error': error}, status_code
+                
+            logging.info(f"Login successful for user: {email}")
+            # Create JWT tokens with string identity
+            access_token = create_access_token(identity=str(user.id))
+            refresh_token = create_refresh_token(identity=str(user.id))
 
-        username = data.get('username')
-        password = data.get('password')
+            # Create response
+            resp = make_response({
+                'message': 'Login successful',
+                'user': user.to_dict()
+            })
 
-        if not username or not password:
-            return make_response(jsonify({'message': 'Username and password are required'}), 400)
+            # Set access token as HTTP-only cookie
+            resp.set_cookie(
+                'access_token_cookie', 
+                access_token, 
+                httponly=True, 
+                secure=False,  # For localhost development
+                samesite='Lax',  # Changed from None to Lax for localhost
+                path='/'
+            )
+            
+            # Set refresh token as HTTP-only cookie
+            resp.set_cookie(
+                'refresh_token_cookie', 
+                refresh_token, 
+                httponly=True, 
+                secure=False,  # For localhost development
+                samesite='Lax',  # Changed from None to Lax for localhost
+                path='/'
+            )
+            
+            return resp
 
-        # Wyszukiwanie użytkownika w bazie danych
-        user = User.query.filter_by(username=username).first()
-
-        if user and user.check_password(password):
-            # Generowanie tokenu JWT
-            access_token = create_access_token(identity=user.id,expires_delta=None)
-            refresh_token = create_refresh_token(identity=user.id)
-            response = make_response(jsonify({'access_token': access_token,
-                                          'refresh_token': refresh_token}), 200)
-            response.set_cookie("access_token_cookie", access_token)
-            response.set_cookie("refresh_token_cookie", refresh_token)
-            return response
-
-        else:
-            return make_response(jsonify({'message': 'Invalid credentials'}), 401)
+        except Exception as e:
+            logging.error(f"Login error: {str(e)}")
+            return {'error': 'Internal server error'}, 500
 class RefreshResource(Resource):    
     @jwt_required(refresh=True, locations=["cookies"])
     def post(self):
@@ -91,20 +147,15 @@ class GoogleLoginCallback(Resource):
             )
             db.session.add(user)
             db.session.commit()
-            access_token = create_access_token(identity=user.google_id)
-            refresh_token = create_refresh_token(identity=user.google_id)
-            response = make_response(redirect('http://localhost:5173/oauth-callback'))
-            response.set_cookie("access_token_cookie", access_token)
-            response.set_cookie("refresh_token_cookie", refresh_token)
-            return response
-        else:
-            access_token = create_access_token(identity=userinfo.get("sub"))
-            refresh_token = create_refresh_token(identity=userinfo.get("sub"))
-            user = User.query.filter_by(google_id=userinfo['sub']).first()
-            response = make_response(redirect('http://localhost:5173/oauth-callback'))
-            response.set_cookie("access_token_cookie", access_token)
-            response.set_cookie("refresh_token_cookie", refresh_token)
-            return response
+            
+        # Always use google_id as identity for OAuth users (as string)
+        access_token = create_access_token(identity=str(user.google_id))
+        refresh_token = create_refresh_token(identity=str(user.google_id))
+        
+        response = make_response(redirect(f'{os.getenv("FRONTEND_URL")}/oauth-callback'))
+        response.set_cookie("access_token_cookie", access_token, httponly=True, secure=False, samesite='Lax', path='/')
+        response.set_cookie("refresh_token_cookie", refresh_token, httponly=True, secure=False, samesite='Lax', path='/')
+        return response
 
 
 class GoogleProfile(Resource):    
@@ -127,13 +178,25 @@ class UserResource(Resource):
                     return jsonify({'error': 'User not found'}), 404
             else:
                 # Get current user from JWT
-                user_id = get_jwt_identity()
-                if not user_id:
+                current_user_id = get_jwt_identity()
+                if not current_user_id:
                     return jsonify({'error': 'Authentication required'}), 401
-                user = User.query.get(user_id)
+                
+                # Try to find user safely (handling both regular IDs and Google IDs)
+                user = None
+                try:
+                    numeric_id = int(current_user_id)
+                    if numeric_id < 1000000000:  # Regular user ID
+                        user = User.query.get(numeric_id)
+                    else:  # Large number, likely Google ID
+                        user = User.query.filter_by(google_id=current_user_id).first()
+                except (ValueError, TypeError, OverflowError):
+                    user = User.query.filter_by(google_id=current_user_id).first()
+                
                 if not user:
-                    logging.warning(f"Current user with ID {user_id} not found in database")
                     return jsonify({'error': 'User not found'}), 404
+                    
+                return user.to_dict(), 200
             
             return jsonify(user.to_dict()), 200
         except Exception as e:
@@ -144,11 +207,49 @@ class UserMeResource(Resource):
     @jwt_required(locations=["cookies"])
     def get(self):
         """Get profile of logged in user"""
+        logging.info("UserMeResource.get() called")
+        
+        # Debug: Log all cookies received
+        from flask import request
+        logging.info(f"Request cookies: {dict(request.cookies)}")
+        logging.info(f"Request headers: {dict(request.headers)}")
+        
         current_user_id = get_jwt_identity()
-        user = User.query.filter_by(google_id=current_user_id).first()
+        logging.info(f"JWT identity: {current_user_id}")
+        
+        user = None
+        
+        # Try to determine if this is a regular user ID (small number) or Google ID (large number)
+        try:
+            # Try to convert to int and check if it's a reasonable user ID (< 1 billion)
+            numeric_id = int(current_user_id)
+            if numeric_id < 1000000000:  # Less than 1 billion, likely a regular user ID
+                user = User.query.filter_by(id=numeric_id).first()
+            else:
+                # Large number, likely a Google ID - search by google_id as string
+                user = User.query.filter_by(google_id=current_user_id).first()
+        except (ValueError, TypeError, OverflowError):
+            # If conversion fails, try as string (for OAuth users with google_id)
+            user = User.query.filter_by(google_id=current_user_id).first()
+        
+        # If still not found, try the other field
+        if not user:
+            try:
+                numeric_id = int(current_user_id)
+                if numeric_id >= 1000000000:  # Large number, try as google_id string
+                    user = User.query.filter_by(google_id=current_user_id).first()
+                else:  # Small number, try as regular ID
+                    user = User.query.filter_by(id=numeric_id).first()
+            except (ValueError, TypeError, OverflowError):
+                # Last resort: try as google_id string
+                user = User.query.filter_by(google_id=current_user_id).first()
+        
+        logging.info(f"Looking for user with identity: {current_user_id}, found: {user}")
+        
         if not user:
             logging.warning(f"User with ID {current_user_id} not found")
             return jsonify({'error': 'User not found'}), 404
+            
         return user.to_dict(), 200
     
 class LogoutResource(Resource):
@@ -172,40 +273,3 @@ class LogoutResource(Resource):
         logging.info("All cookies cleared during logout")
         return resp, 200
         
-    
-class CookieTest(Resource):
-    def get(self):
-        """Test endpoint to diagnose cookie issues"""
-        if request.method == 'OPTIONS':
-            response = make_response()
-            response.headers.add('Access-Control-Allow-Methods', 'GET, OPTIONS')
-            response.headers.add('Access-Control-Allow-Headers', 'Content-Type, Authorization')
-            # Let the global after_request handler set the credentials header
-            # to avoid duplicate headers
-            return response
-            
-        response = make_response(jsonify({
-            'message': 'Testing cookie setting',
-            'timestamp': datetime.now().isoformat()
-        }))
-        
-        # Set a test cookie
-        response.set_cookie(
-            'test_cookie',            'test_value', 
-            httponly=True, 
-            secure=True,  # Must be True for SameSite=None to work
-            samesite='None',  # Required for cross-site requests
-            path='/'
-        )
-        
-        # Add a non-httpOnly cookie to help the frontend detect cookie functionality
-        response.set_cookie(
-            'test_visible_cookie', 
-            'frontend_visible',
-            httponly=False,
-            secure=True,  # Must be True for SameSite=None to work
-            samesite='None',
-            path='/'
-        )
-        
-        return response

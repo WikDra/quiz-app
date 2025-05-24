@@ -44,8 +44,8 @@ def setup_security():
     
     # Set FRONTEND_URL if doesn't exist
     if not os.environ.get('FRONTEND_URL'):
-        set_key(dotenv_path, 'FRONTEND_URL', 'http://localhost:5173')
-        print("Set default FRONTEND_URL to http://localhost:5173")
+        set_key(dotenv_path, 'FRONTEND_URL', 'http://127.0.0.1:5173')
+        print("Set default FRONTEND_URL to http://127.0.0.1:5173")
     else:
         print(f"Using existing FRONTEND_URL: {os.environ.get('FRONTEND_URL')}")
     

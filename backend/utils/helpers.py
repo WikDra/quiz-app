@@ -60,4 +60,4 @@ def generate_secure_key(length=32):
     """
     Generate a secure random key
     """
-    return base64.b64encode(secrets.token_bytes(length)).decode('utf-8')
+    return base64.b64encode(secrets.token_bytes(length))

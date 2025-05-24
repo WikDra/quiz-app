@@ -2,33 +2,63 @@ import stripe
 import os
 import json
 from datetime import datetime, timedelta
-from flask import request, jsonify, current_app
-from flask_restful import Resource
-from .models import Payment, User, StripeSubscription, _process_subscription_by_email, db  
+from flask import jsonify, request, current_app
+from flask_jwt_extended import jwt_required, get_jwt_identity
+from .models import db, User, StripeSubscription, _process_subscription_by_email
 
-class CreatePaymentIntent(Resource):
-    def post(self):
-        data = request.json
-        stripe.api_key = os.environ.get('STRIPE_SECRET_KEY')
-
+class StripeController:
+    @staticmethod
+    @jwt_required()
+    def create_checkout_session():        
         try:
-            intent = stripe.PaymentIntent.create(
-                amount=int(data['amount']) * 100,  # Kwota w centach
-                currency=data.get('currency', 'usd'),
-                payment_method_types=["card"],
-            )
-            return {
-                'client_secret': intent['client_secret'],
-                'payment_intent_id': intent['id']
-            }, 200
-        except Exception as e:
-            return {'error': str(e)}, 400
+            data = request.get_json()
+            price_id = data.get('priceId')
+            if not price_id:
+                return jsonify({'error': 'Price ID is required'}), 400
 
-class StripeWebhook(Resource):
-    def post(self):
-        """Enhanced webhook handler that supports both payment intents and subscriptions"""
-        stripe.api_key = os.environ.get('STRIPE_SECRET_KEY')
-        payload = request.get_data()
+            user_id = get_jwt_identity()
+            # Handle both string and integer user IDs safely
+            try:
+                if isinstance(user_id, str):
+                    user_id = int(user_id)
+            except (ValueError, TypeError):
+                current_app.logger.error(f"Invalid user ID format: {user_id}")
+                return jsonify({'error': 'Invalid user ID'}), 400
+                
+            user = User.query.get(user_id)
+
+            if not user:
+                current_app.logger.warning(f"User not found for ID: {user_id} during checkout session creation.")
+                return jsonify({'error': 'User not found'}), 404
+
+            frontend_url = os.environ.get('FRONTEND_URL', 'http://localhost:5173')
+            
+            checkout_session = stripe.checkout.Session.create(
+                payment_method_types=['card'],
+                line_items=[{
+                    'price': price_id,
+                    'quantity': 1,
+                }],
+                mode='subscription',
+                success_url=f"{frontend_url}/payment-success?session_id={{CHECKOUT_SESSION_ID}}&subscription=true",
+                cancel_url=f"{frontend_url}/payment-cancelled",
+                customer_email=user.email,
+                client_reference_id=str(user_id)
+            )
+            current_app.logger.info(f"Checkout session created for user {user_id} with session ID {checkout_session.id}")
+            return jsonify({'id': checkout_session.id})
+
+        except stripe.error.StripeError as e:
+            current_app.logger.error(f"Stripe API error during checkout session creation: {str(e)}")
+            return jsonify({'error': f'Stripe error: {e.user_message or str(e)}'}), 400
+        except Exception as e:
+            current_app.logger.error(f"Unexpected error during checkout session creation: {str(e)}")
+            return jsonify({'error': 'An unexpected error occurred'}), 500
+
+    @staticmethod
+    def handle_webhook():
+        """Handle incoming webhook events from Stripe."""
+        payload = request.data
         sig_header = request.headers.get('Stripe-Signature')
         endpoint_secret = os.environ.get('STRIPE_WEBHOOK_SECRET')
         is_development = os.environ.get('FLASK_ENV') == 'development' or os.environ.get('FLASK_DEBUG') == '1'
@@ -52,7 +82,6 @@ class StripeWebhook(Resource):
             event_type = event['type']
             current_app.logger.info(f"Processing webhook event type: {event_type}")
 
-            # Handle subscription-related events (from stripe_controller.py)
             if event_type == 'checkout.session.completed':
                 session = event['data']['object']
                 client_reference_id = session.get('client_reference_id')
@@ -135,23 +164,20 @@ class StripeWebhook(Resource):
                 current_app.logger.warning(f"Invoice payment failed: {invoice['id']}")
                 # TODO: Consider notifying user or admin about payment failure
 
-            # Handle payment intent events (original functionality)
-            elif event_type == 'payment_intent.succeeded':
-                intent = event['data']['object']
-                amount = intent['amount'] / 100
-
-                # Save payment to database
-                payment = Payment(
-                    stripe_payment_intent_id=intent['id'],
-                    amount=amount,
-                    status='succeeded'
-                )
-                db.session.add(payment)
-                db.session.commit()
-                current_app.logger.info(f"Payment saved: {intent['id']}")
-
         except Exception as e:
             current_app.logger.error(f"Error processing webhook {event_type}: {str(e)}")
             return jsonify({'error': 'Webhook processing error'}), 500
 
         return jsonify({'status': 'success'}), 200
+
+def register_stripe_routes(app):
+    """Register Stripe-related routes with the Flask app."""
+    stripe.api_key = os.environ.get('STRIPE_SECRET_KEY')
+    if not stripe.api_key:
+        app.logger.warning("STRIPE_SECRET_KEY is not set. Stripe functionality will not work.")
+
+    # Register routes to match frontend expectations
+    app.add_url_rule('/stripe/create-checkout-session', 'create_checkout_session_route', 
+                     StripeController.create_checkout_session, methods=['POST'])
+    app.add_url_rule('/stripe/webhook', 'stripe_webhook_route', 
+                     StripeController.handle_webhook, methods=['POST'])
