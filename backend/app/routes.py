@@ -248,7 +248,7 @@ class UserMeResource(Resource):
         
         if not user:
             logging.warning(f"User with ID {current_user_id} not found")
-            return jsonify({'error': 'User not found'}), 404
+            return {'error': 'User not found'}, 404
             
         return user.to_dict(), 200
     

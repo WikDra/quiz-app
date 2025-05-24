@@ -1,8 +1,8 @@
 from . import db
 from werkzeug.security import generate_password_hash, check_password_hash
 from .extensions import db
-
-from datetime import datetime
+from flask import current_app
+from datetime import datetime, timedelta
 
 class Quiz(db.Model):
     __tablename__ = 'quizzes'

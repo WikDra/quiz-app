@@ -9,23 +9,39 @@ from .models import db, User, StripeSubscription, _process_subscription_by_email
 class StripeController:
     @staticmethod
     @jwt_required()
-    def create_checkout_session():        
+    def create_checkout_session():
         try:
             data = request.get_json()
             price_id = data.get('priceId')
             if not price_id:
                 return jsonify({'error': 'Price ID is required'}), 400
-
-            user_id = get_jwt_identity()
-            # Handle both string and integer user IDs safely
-            try:
-                if isinstance(user_id, str):
-                    user_id = int(user_id)
-            except (ValueError, TypeError):
-                current_app.logger.error(f"Invalid user ID format: {user_id}")
-                return jsonify({'error': 'Invalid user ID'}), 400
                 
-            user = User.query.get(user_id)
+            user_id = get_jwt_identity()
+            current_app.logger.info(f"Creating checkout session for user_id: {user_id}")
+            
+            # For OAuth users with Google ID, find user by google_id
+            user = None
+            try:
+                # Try to convert to int to see if it's a regular user ID
+                numeric_id = int(user_id)
+                if numeric_id < 1000000000:  # Small number, likely regular user ID
+                    user = User.query.get(numeric_id)
+                else:
+                    # Large number, likely Google ID - search by google_id as string
+                    user = User.query.filter_by(google_id=user_id).first()
+            except (ValueError, TypeError, OverflowError):
+                # If conversion fails, try as Google ID string
+                user = User.query.filter_by(google_id=user_id).first()
+            
+            # If still not found, try both fields
+            if not user:
+                user = User.query.filter_by(google_id=user_id).first()
+                if not user:
+                    try:
+                        numeric_id = int(user_id)
+                        user = User.query.get(numeric_id)
+                    except (ValueError, TypeError, OverflowError):
+                        pass
 
             if not user:
                 current_app.logger.warning(f"User not found for ID: {user_id} during checkout session creation.")
@@ -43,9 +59,9 @@ class StripeController:
                 success_url=f"{frontend_url}/payment-success?session_id={{CHECKOUT_SESSION_ID}}&subscription=true",
                 cancel_url=f"{frontend_url}/payment-cancelled",
                 customer_email=user.email,
-                client_reference_id=str(user_id)
+                client_reference_id=str(user.id)  # Use user.id instead of user_id to avoid large Google ID
             )
-            current_app.logger.info(f"Checkout session created for user {user_id} with session ID {checkout_session.id}")
+            current_app.logger.info(f"Checkout session created for user {user.id} with session ID {checkout_session.id}")
             return jsonify({'id': checkout_session.id})
 
         except stripe.error.StripeError as e:
