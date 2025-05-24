@@ -143,7 +143,7 @@ export const QuizProvider = ({ children }) => {
       };
         const response = await fetch(API_ENDPOINTS.QUIZ_BY_ID(id), {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json','Accept': 'application/json' },
         credentials: 'include', // Include cookies with request
         body: JSON.stringify(quizData),
       });

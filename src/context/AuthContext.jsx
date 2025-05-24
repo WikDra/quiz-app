@@ -84,7 +84,6 @@ export const AuthProvider = ({ children }) => {
       const timeoutId = setTimeout(() => controller.abort(), 5000); // 5s timeout
 
       const response = await fetch(`${API_BASE_URL}/users/me`, {
-        credentials: 'include',
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
@@ -624,7 +623,13 @@ let refreshTimeout = null;
       if (!email?.trim() || !password?.trim()) {
         return { success: false, error: 'Email i hasło są wymagane' };
       }
+      
+      console.log('[LOGIN] Starting login process for:', email);
+      console.log('[LOGIN] API_BASE_URL:', API_BASE_URL);
+      
       // Bezpośrednie wywołanie do API logowania
+      console.log('[LOGIN] Making fetch request to:', `${API_BASE_URL}/login`);
+      
       const response = await fetch(`${API_BASE_URL}/login`, {
         method: 'POST',
         headers: {
@@ -633,13 +638,28 @@ let refreshTimeout = null;
         credentials: 'include', // Include cookies in request
         body: JSON.stringify({ email, password }),
       });
-      const data = await response.json();
+      
+      console.log('[LOGIN] Response received:', response.status, response.statusText);
+      
       if (!response.ok) {
+        const errorText = await response.text();
+        console.log('[LOGIN] Error response text:', errorText);
+        
+        let errorData;
+        try {
+          errorData = JSON.parse(errorText);
+        } catch (e) {
+          errorData = { error: errorText || 'Nieprawidłowy email lub hasło' };
+        }
+        
         return { 
           success: false, 
-          error: data.error || 'Nieprawidłowy email lub hasło' 
+          error: errorData.error || 'Nieprawidłowy email lub hasło' 
         };
       }
+      
+      const data = await response.json();
+      console.log('[LOGIN] Success response data:', data);
       // Po zalogowaniu pobierz profil użytkownika z backendu
       const profileResp = await fetch(`${API_BASE_URL}/users/me`, {
         method: 'GET',
@@ -663,9 +683,23 @@ let refreshTimeout = null;
       }
       return { success: true };
     } catch (error) {
+      console.error('[LOGIN] Error occurred:', error);
+      console.error('[LOGIN] Error name:', error.name);
+      console.error('[LOGIN] Error message:', error.message);
+      console.error('[LOGIN] Error stack:', error.stack);
+      
+      let errorMessage = 'Wystąpił błąd podczas logowania';
+      
+      if (error.name === 'TypeError' && error.message.includes('Failed to fetch')) {
+        errorMessage = 'Nie można połączyć się z serwerem. Sprawdź połączenie internetowe i spróbuj ponownie.';
+        console.error('[LOGIN] Network error - server might be down or CORS issue');
+      } else if (error.name === 'AbortError') {
+        errorMessage = 'Żądanie zostało przerwane - spróbuj ponownie.';
+      }
+      
       return { 
         success: false, 
-        error: error.message || 'Wystąpił błąd podczas logowania' 
+        error: errorMessage
       };
     }
   }, [API_BASE_URL, scheduleTokenRefresh]);

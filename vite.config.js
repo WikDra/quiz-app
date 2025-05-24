@@ -6,12 +6,11 @@ export default defineConfig({
   plugins: [react()],
   server: {
     port: 5173,
-    cors: true,
-    proxy: {
+    cors: true,    proxy: {
       // Forward API calls to Flask backend
       '/api': {
-        // Use IPv4 address to avoid IPv6 connection errors
-        target: 'http://localhost:5000',
+        // Use environment variable or fallback to localhost
+        target: process.env.VITE_API_BASE_URL || 'http://localhost:5000',
         changeOrigin: true,
         secure: false,
       }

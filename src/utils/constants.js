@@ -3,7 +3,7 @@
  */
 
 // API URLs
-export const API_BASE_URL = 'http://localhost:5000';
+export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000';
 export const API_ENDPOINTS = {
   PRODUCTS: `${API_BASE_URL}/products`,
   PRODUCT_BY_ID: (id) => `${API_BASE_URL}/products/${id}`,
