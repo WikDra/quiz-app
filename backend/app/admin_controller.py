@@ -235,17 +235,16 @@ class AdminController:
             
             if payment.status != 'pending':
                 return {'error': f'Payment is already {payment.status}'}
-            
-            # Approve payment
+              # Approve payment
             payment.approve_payment()
             payment.admin_id = admin_user.id
                 
             db.session.commit()
             
-            return {
-                'message': f'Payment approved and premium access granted to user {payment.user.username}',
-                'payment': payment.to_dict()
-            }
+            # Return payment data directly for tests compatibility
+            payment_data = payment.to_dict()
+            payment_data['message'] = f'Payment approved and premium access granted to user {payment.user.username}'
+            return payment_data
             
         except Exception as e:
             db.session.rollback()
@@ -266,16 +265,15 @@ class AdminController:
               # Get rejection reason from request
             data = request.get_json() or {}
             rejection_reason = data.get('reason', 'No reason provided')
-            
-            # Reject payment
+              # Reject payment
             payment.reject_payment(rejection_reason)
             payment.admin_id = admin_user.id
             db.session.commit()
             
-            return {
-                'message': 'Payment rejected successfully',
-                'payment': payment.to_dict()
-            }
+            # Return payment data directly for tests compatibility
+            payment_data = payment.to_dict()
+            payment_data['message'] = 'Payment rejected successfully'
+            return payment_data
             
         except Exception as e:
             db.session.rollback()
@@ -367,10 +365,10 @@ class AdminController:
                         'status': payment.status,
                         'type': 'payment_intent'
                     } for payment in payments.items
-                ],
-                'failed_subscriptions': [
+                ],                'failed_subscriptions': [
                     {
                         'id': sub.id,
+                        'stripe_subscription_id': sub.stripe_subscription_id,
                         'user_id': sub.user_id,
                         'user_email': sub.user.email if sub.user else None,
                         'user_name': sub.user.username if sub.user else None,

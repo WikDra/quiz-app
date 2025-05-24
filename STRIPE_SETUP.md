@@ -1,104 +1,109 @@
-# Stripe Integration Setup Guide
+# 💳 Stripe Integration Setup Guide (KOMPLETNA IMPLEMENTACJA)
 
-This guide will help you set up Stripe payment processing for the Quiz App premium subscription feature. The core implementation is already in place, but you need to configure your Stripe account and environment variables correctly.
+Ten przewodnik opisuje pełną integrację płatności Stripe w Quiz App, która **już została zaimplementowana** z zaawansowanymi funkcjami obsługi płatności.
 
-## Prerequisites
+## ✅ **ZAIMPLEMENTOWANE FUNKCJE**
 
-1. A Stripe account - sign up at [stripe.com](https://stripe.com) if you don't have one.
-2. Access to the Stripe Dashboard to obtain API keys and set up webhooks.
+### **🏆 Core Stripe Features:**
+- ✅ **Checkout Sessions:** Bezpieczne sesje płatności
+- ✅ **Webhooks:** `customer.subscription.created/updated/deleted`  
+- ✅ **Failed Payments:** Obsługa `invoice.payment_failed`, `payment_intent.payment_failed`
+- ✅ **Retry Logic:** 3 próby z automatyczną dezaktywacją premium
+- ✅ **Admin Dashboard:** Monitoring failed payments
+- ✅ **Database Tracking:** Model `StripeSubscription` z `failed_payment_count`
 
-## Setup Steps
+### **🔧 Advanced Features:**
+- ✅ **Webhook Security:** Signature verification
+- ✅ **Idempotency:** Duplicate event protection
+- ✅ **Error Handling:** Comprehensive logging i error responses
+- ✅ **CORS Support:** Frontend integration
 
-### 1. Obtain API Keys from Stripe
+---
 
-1. Log in to your [Stripe Dashboard](https://dashboard.stripe.com/)
-2. Navigate to Developers > API keys
-3. Make note of your **Publishable Key** and **Secret Key**
+## 🚀 Setup Steps
 
-### 2. Create a Product and Price in Stripe
+### **1. Utwórz konto Stripe**
 
-1. In your Stripe Dashboard, go to Products > Add Product
-2. Create a product for your premium subscription:
-   - Name: "Quiz App Premium Subscription"
-   - Price: Set your desired price (e.g., $9.99 per month)
-   - Billing: Set to recurring (monthly or annual)
-3. After creating the product, Stripe will generate a **Price ID** (starts with `price_`). Save this ID.
+1. Zarejestruj się na [stripe.com](https://stripe.com)
+2. Potwierdź email i zaloguj się do Dashboard
 
-### 3. Set Up Webhook Endpoints
+### **2. Pobierz API Keys**
 
-#### Option A: Using Stripe CLI (Recommended for Development)
+1. W [Stripe Dashboard](https://dashboard.stripe.com/) → **Developers > API keys**
+2. Skopiuj:
+   - **Publishable Key** (`pk_test_...`)
+   - **Secret Key** (`sk_test_...`)
 
-1. Download and install [Stripe CLI](https://stripe.com/docs/stripe-cli)
+### **3. Utwórz Produkt i Cenę**
 
-2. Log in to your Stripe account through CLI:
+1. **Products** → **Add Product**
+2. Konfiguracja:
+   - **Name:** "Quiz App Premium Subscription"
+   - **Price:** $9.99 (lub inna kwota)
+   - **Billing:** Recurring - Monthly
+3. **Zapisz Price ID** (format: `price_xxxxx`)
+
+### **4. Skonfiguruj Webhooks**
+
+#### **Opcja A: Stripe CLI (Development)**
+
+1. **Zainstaluj Stripe CLI:** [stripe.com/docs/stripe-cli](https://stripe.com/docs/stripe-cli)
+
+2. **Zaloguj się:**
    ```bash
    stripe login
    ```
 
-3. Start forwarding events to your local server:
+3. **Uruchom listener dla webhook'ów:**
    ```bash
-   stripe listen --forward-to localhost:5000/api/stripe/webhook
+   stripe listen --forward-to localhost:5000/stripe/webhook
    ```
-   This will provide you with a webhook signing secret. Save this secret in your `.env` file.
+   **Skopiuj webhook signing secret** z output'u
 
-4. In a separate terminal, you can trigger test events:
+4. **Testuj eventy:**
    ```bash
-   stripe trigger payment_intent.succeeded
    stripe trigger checkout.session.completed
+   stripe trigger invoice.payment_failed
    stripe trigger customer.subscription.deleted
    ```
 
-#### Option B: Using ngrok (Alternative Method)
+#### **Opcja B: Dashboard Webhook (Production)**
 
-1. In Stripe Dashboard, go to Developers > Webhooks
-2. Click "Add Endpoint"
-3. Use [ngrok](https://ngrok.com/) to expose your local server:
-   ```bash
-   ngrok http 5000
-   ```
-4. Use the generated ngrok URL as your webhook endpoint: `https://your-ngrok-url/api/stripe/webhook`
-5. Select events to listen for:
-   - `checkout.session.completed`
-   - `payment_intent.succeeded`
+1. **Developers** → **Webhooks** → **Add endpoint**
+2. **URL:** `https://yourdomain.com/stripe/webhook`
+3. **Events to send:**
+   - `customer.subscription.created`
+   - `customer.subscription.updated` 
    - `customer.subscription.deleted`
-6. After creating the webhook, Stripe will provide a **Webhook Secret**. Save this value.
+   - `invoice.payment_failed` ⚠️ **WAŻNE dla failed payments**
+   - `payment_intent.payment_failed`
+4. **Skopiuj Webhook Secret**
 
-### 4. Configure Environment Variables
+---
 
-Update your `.env` file with the following values:
+## 🔧 **Environment Variables**
 
+Zaktualizuj plik `.env`:
+
+```env
+# Stripe Keys (Test Mode)
+STRIPE_SECRET_KEY=sk_test_51xxxxx...
+STRIPE_PUBLISHABLE_KEY=pk_test_51xxxxx...
+STRIPE_WEBHOOK_SECRET=whsec_xxxxx...
+
+# Product Configuration
+STRIPE_PREMIUM_PLAN_ID=price_xxxxx  # ID z kroku 3
+
+# Frontend Keys (w .env.local dla frontendu)
+VITE_STRIPE_PUBLISHABLE_KEY=pk_test_51xxxxx...
+VITE_STRIPE_PREMIUM_PLAN_ID=price_xxxxx
 ```
-# Stripe Configuration
-VITE_STRIPE_PUBLISHABLE_KEY=pk_test_your_publishable_key
-STRIPE_SECRET_KEY=sk_test_your_secret_key
-STRIPE_WEBHOOK_SECRET=whsec_your_webhook_secret
-VITE_STRIPE_PREMIUM_PLAN_ID=price_your_price_id
-```
 
-> **IMPORTANT**: Replace the placeholder values with your actual Stripe keys and IDs.
+---
 
-### 5. Run the Configuration Setup
+## 🧪 **Testing Integration**
 
-Execute the security setup script to ensure all variables are properly configured:
-
-```bash
-cd backend
-python -m utils.setup_security
-```
-
-### 6. Testing the Integration
-
-#### Local Development Testing with Stripe CLI
-
-1. **Setup Testing Environment**
-   ```bash
-   # Install Stripe CLI (if not already installed)
-   # Using Chocolatey on Windows
-   choco install stripe-cli
-   
-   # Login to your Stripe account
-   stripe login
-   ```
+### **1. Development Testing**
 
 2. **Start the Event Listener**
    ```bash

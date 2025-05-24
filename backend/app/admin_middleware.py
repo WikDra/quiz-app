@@ -17,6 +17,10 @@ def admin_required(f):
                 return jsonify({'error': 'Authentication required'}), 401
             
             user = User.query.get(current_user_id)
+            # If user not found by ID, try by google_id (for OAuth users)
+            if not user:
+                user = User.query.filter_by(google_id=current_user_id).first()
+            
             if not user:
                 return jsonify({'error': 'User not found'}), 404
             

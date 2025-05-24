@@ -141,3 +141,28 @@ class QuizController:
             current_app.logger.error(f"Error deleting quiz: {str(e)}")
             db.session.rollback()
             return False, f"Error deleting quiz: {str(e)}"
+    
+    @staticmethod
+    def get_quiz_options(quiz_id):
+        """
+        Get quiz questions without correct answers (for solving)
+        """
+        try:
+            quiz = Quiz.query.get(quiz_id)
+            
+            if not quiz:
+                return None, "Quiz not found"
+            
+            # Get quiz data without correct answers
+            quiz_dict = quiz.to_dict()
+            
+            # Remove correct answers from questions
+            if 'questions' in quiz_dict:
+                for question in quiz_dict['questions']:
+                    if 'correct_answer' in question:
+                        del question['correct_answer']
+            
+            return quiz_dict, None
+        except Exception as e:
+            current_app.logger.error(f"Error fetching quiz options: {str(e)}")
+            return None, f"Error fetching quiz options: {str(e)}"
