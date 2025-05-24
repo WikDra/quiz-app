@@ -24,7 +24,8 @@ from .routes import (
     AdminUserEditResource,
     AdminOfflinePaymentsResource,
     AdminOfflinePaymentApproveResource,
-    AdminOfflinePaymentRejectResource
+    AdminOfflinePaymentRejectResource,
+    AdminFailedPaymentsResource
 )
 from .user_controller import setup_jwt_blacklist_callbacks
 from utils.scheduled_tasks import setup_scheduled_tasks
@@ -119,9 +120,9 @@ def create_app():
     api.add_resource(LogoutResource, '/logout')  # Zmienione z /auth/logout na /logout
 
     # Quizy
-    api.add_resource(QuizResource, '/quiz')
+    api.add_resource(QuizResource, '/quiz', '/quiz/<int:quiz_id>')
     api.add_resource(GetQuizzes, '/quizzes')  # Dodany endpoint dla listy quizów
-    api.add_resource(OptionsQuizResource, '/quiz/<int:quiz_id>')
+    api.add_resource(OptionsQuizResource, '/quiz/<int:quiz_id>/options')
 
     # Google OAuth2
     api.add_resource(GoogleLoginCallback, '/auth/oauth2/callback')
@@ -129,7 +130,7 @@ def create_app():
     api.add_resource(GoogleProfile, '/profile')
 
     # Użytkownik
-    api.add_resource(UserResource, '/users')
+    api.add_resource(UserResource, '/users', '/users/<int:user_id>')
     api.add_resource(UserMeResource, '/users/me')
     api.add_resource(UserOfflinePaymentRequestResource, '/users/offline-payment-request')
     
@@ -142,9 +143,10 @@ def create_app():
     api.add_resource(AdminUsersResource, '/admin/users')
     api.add_resource(AdminUserPromoteResource, '/admin/users/<int:user_id>/promote')
     api.add_resource(AdminUserDemoteResource, '/admin/users/<int:user_id>/demote')
-    api.add_resource(AdminUserEditResource, '/users/<int:user_id>')
+    api.add_resource(AdminUserEditResource, '/admin/users/<int:user_id>')
     api.add_resource(AdminOfflinePaymentsResource, '/admin/payments/offline')
     api.add_resource(AdminOfflinePaymentApproveResource, '/admin/payments/offline/<int:payment_id>/approve')
     api.add_resource(AdminOfflinePaymentRejectResource, '/admin/payments/offline/<int:payment_id>/reject')
+    api.add_resource(AdminFailedPaymentsResource, '/admin/payments/failed')
 
     return app

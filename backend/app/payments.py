@@ -133,7 +133,56 @@ class StripeWebhook(Resource):
             elif event_type == 'invoice.payment_failed':
                 invoice = event['data']['object']
                 current_app.logger.warning(f"Invoice payment failed: {invoice['id']}")
-                # TODO: Consider notifying user or admin about payment failure
+                
+                # Handle subscription payment failure
+                subscription_id = invoice.get('subscription')
+                customer_id = invoice.get('customer')
+                
+                if subscription_id:
+                    subscription = StripeSubscription.query.filter_by(
+                        stripe_subscription_id=subscription_id
+                    ).first()
+                    
+                    if subscription:
+                        # Mark subscription as past_due or failed
+                        subscription.status = 'past_due'
+                        subscription.failed_payment_count = (subscription.failed_payment_count or 0) + 1
+                        
+                        # If too many failed attempts, suspend premium access
+                        if subscription.failed_payment_count >= 3:
+                            subscription.status = 'canceled'
+                            subscription.user.has_premium_access = False
+                            current_app.logger.error(f"Subscription {subscription.id} canceled after 3 failed payments")
+                        
+                        db.session.commit()
+                        current_app.logger.info(f"Subscription {subscription.id} marked as past_due due to payment failure")
+                    else:
+                        current_app.logger.warning(f"Subscription not found for failed payment: {subscription_id}")
+            
+            elif event_type == 'payment_intent.payment_failed':
+                intent = event['data']['object']
+                current_app.logger.warning(f"Payment intent failed: {intent['id']}")
+                
+                # Update payment record if it exists
+                payment = Payment.query.filter_by(
+                    stripe_payment_intent_id=intent['id']
+                ).first()
+                
+                if payment:
+                    payment.status = 'failed'
+                    db.session.commit()
+                    current_app.logger.info(f"Payment {payment.id} marked as failed")
+                else:
+                    # Create failed payment record for tracking
+                    amount = intent['amount'] / 100
+                    payment = Payment(
+                        stripe_payment_intent_id=intent['id'],
+                        amount=amount,
+                        status='failed'
+                    )
+                    db.session.add(payment)
+                    db.session.commit()
+                    current_app.logger.info(f"Failed payment record created: {intent['id']}")
 
             # Handle payment intent events (original functionality)
             elif event_type == 'payment_intent.succeeded':

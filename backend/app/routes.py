@@ -205,6 +205,43 @@ class UserResource(Resource):
         except Exception as e:
             logging.error(f"Error in get_user: {str(e)}")
             return jsonify({'error': 'Internal server error'}), 500
+    
+    @jwt_required(locations=["cookies"])
+    def put(self, user_id):
+        """Update user's own data"""
+        try:
+            # Get current user from JWT
+            current_user_id = get_jwt_identity()
+            if not current_user_id:
+                return {'error': 'Authentication required'}, 401
+            
+            # Convert current_user_id to int for comparison
+            try:
+                current_user_numeric = int(current_user_id)
+            except (ValueError, TypeError):
+                return {'error': 'Invalid user authentication'}, 401
+            
+            # Check if user is trying to update their own data
+            if current_user_numeric != user_id:
+                return {'error': 'You can only update your own data'}, 403
+            
+            # Get request data
+            data = request.get_json()
+            if not data:
+                return {'error': 'No data provided'}, 400
+            
+            # Use UserController to update user data
+            from .user_controller import UserController
+            result, error = UserController.update_user_data(user_id, data)
+            
+            if error:
+                return {'error': error}, 400
+            
+            return {'message': 'User updated successfully', 'user': result}, 200
+            
+        except Exception as e:
+            logging.error(f"Error updating user {user_id}: {str(e)}")
+            return {'error': 'Failed to update user'}, 500
 
 class UserMeResource(Resource):
     @jwt_required(locations=["cookies"])
@@ -429,18 +466,6 @@ class AdminUserDemoteResource(Resource):
             logging.error(f"Error demoting user {user_id}: {str(e)}")
             return {'error': 'Failed to demote user'}, 500
 
-class AdminUserEditResource(Resource):
-    @jwt_required(locations=["cookies"])
-    @admin_required
-    def put(self, user_id):
-        """Update user information"""
-        try:
-            result = AdminController.update_user(user_id)
-            return result, 200
-        except Exception as e:
-            logging.error(f"Error updating user {user_id}: {str(e)}")
-            return {'error': 'Failed to update user'}, 500
-
 class AdminOfflinePaymentsResource(Resource):
     @jwt_required(locations=["cookies"])
     @admin_required
@@ -487,6 +512,18 @@ class AdminOfflinePaymentRejectResource(Resource):
         except Exception as e:
             logging.error(f"Error rejecting payment {payment_id}: {str(e)}")
             return {'error': 'Failed to reject payment'}, 500
+
+class AdminFailedPaymentsResource(Resource):
+    @jwt_required(locations=["cookies"])
+    @admin_required
+    def get(self):
+        """Get failed payments for admin dashboard"""
+        try:
+            payments = AdminController.get_failed_payments()
+            return payments, 200
+        except Exception as e:
+            logging.error(f"Error getting failed payments: {str(e)}")
+            return {'error': 'Failed to load failed payments'}, 500
 
 class AdminUserEditResource(Resource):
     @jwt_required(locations=["cookies"])

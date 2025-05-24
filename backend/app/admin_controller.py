@@ -3,14 +3,14 @@ Admin controller for managing administrative functions
 """
 from flask import request, jsonify
 from flask_jwt_extended import get_jwt_identity
-from .models import User, OfflinePayment, StripeSubscription, Quiz, db
-from .admin_middleware import admin_required, get_current_admin_user
+from .models import User, OfflinePayment, StripeSubscription, Quiz, Payment, db
+from .admin_middleware import get_current_admin_user
 from datetime import datetime, timedelta
 
 class AdminController:
     
     @staticmethod
-    @admin_required
+
     def get_dashboard_stats():
         """Get admin dashboard statistics"""
         try:
@@ -54,7 +54,7 @@ class AdminController:
             return {'error': f'Failed to get dashboard stats: {str(e)}'}
     
     @staticmethod
-    @admin_required
+
     def get_users():
         """Get all users with pagination"""
         try:
@@ -97,7 +97,7 @@ class AdminController:
             return {'error': f'Failed to get users: {str(e)}'}
     
     @staticmethod
-    @admin_required
+
     def promote_user_to_admin(user_id):
         """Promote user to admin role"""
         try:
@@ -121,7 +121,7 @@ class AdminController:
             return {'error': f'Failed to promote user: {str(e)}'}
     
     @staticmethod
-    @admin_required
+
     def demote_admin_to_user(user_id):
         """Demote admin to regular user"""
         try:
@@ -143,15 +143,13 @@ class AdminController:
             
             return {
                 'message': f'Admin {target_user.username} demoted to user successfully',
-                'user': target_user.to_dict()
-            }
+                'user': target_user.to_dict()            }
             
         except Exception as e:
             db.session.rollback()
             return {'error': f'Failed to demote user: {str(e)}'}
     
     @staticmethod
-    @admin_required
     def get_offline_payments():
         """Get all offline payments with pagination"""
         try:
@@ -186,12 +184,10 @@ class AdminController:
                     'has_prev': payments.has_prev
                 }
             }
-            
         except Exception as e:
             return {'error': f'Failed to get offline payments: {str(e)}'}
     
     @staticmethod
-    @admin_required
     def create_offline_payment():
         """Create new offline payment (for testing purposes)"""
         try:
@@ -223,13 +219,11 @@ class AdminController:
                 'message': 'Offline payment created successfully',
                 'payment': payment.to_dict()
             }
-            
         except Exception as e:
             db.session.rollback()
             return {'error': f'Failed to create offline payment: {str(e)}'}
     
     @staticmethod
-    @admin_required
     def approve_offline_payment(payment_id):
         """Approve offline payment and grant premium access"""
         try:
@@ -240,7 +234,9 @@ class AdminController:
                 return {'error': 'Payment not found'}
             
             if payment.status != 'pending':
-                return {'error': f'Payment is already {payment.status}'}            # Approve payment
+                return {'error': f'Payment is already {payment.status}'}
+            
+            # Approve payment
             payment.approve_payment()
             payment.admin_id = admin_user.id
                 
@@ -256,7 +252,6 @@ class AdminController:
             return {'error': f'Failed to approve payment: {str(e)}'}
     
     @staticmethod
-    @admin_required
     def reject_offline_payment(payment_id):
         """Reject offline payment"""
         try:
@@ -268,11 +263,11 @@ class AdminController:
             
             if payment.status != 'pending':
                 return {'error': f'Payment is already {payment.status}'}
-            
-            # Get rejection reason from request
+              # Get rejection reason from request
             data = request.get_json() or {}
             rejection_reason = data.get('reason', 'No reason provided')
-              # Reject payment
+            
+            # Reject payment
             payment.reject_payment(rejection_reason)
             payment.admin_id = admin_user.id
             db.session.commit()
@@ -285,9 +280,8 @@ class AdminController:
         except Exception as e:
             db.session.rollback()
             return {'error': f'Failed to reject payment: {str(e)}'}
-    
+
     @staticmethod
-    @admin_required
     def update_user(user_id):
         """Update user information"""
         try:
@@ -336,3 +330,65 @@ class AdminController:
         except Exception as e:
             db.session.rollback()
             return {'error': f'Failed to update user: {str(e)}'}
+    
+    @staticmethod
+
+    def get_failed_payments():
+        """Get failed Stripe payments for admin dashboard"""
+        try:
+            page = request.args.get('page', 1, type=int)
+            per_page = request.args.get('per_page', 20, type=int)
+            
+            # Get failed payments from Payment model
+            query = Payment.query.filter_by(status='failed')
+            
+            # Get failed subscriptions
+            failed_subscriptions = StripeSubscription.query.filter(
+                StripeSubscription.status.in_(['past_due', 'canceled']),
+                StripeSubscription.failed_payment_count > 0
+            ).all()
+            
+            # Order by most recent first
+            query = query.order_by(Payment.id.desc())
+            
+            # Pagination
+            payments = query.paginate(
+                page=page,
+                per_page=per_page,
+                error_out=False
+            )
+            
+            return {
+                'failed_payments': [
+                    {
+                        'id': payment.id,
+                        'stripe_payment_intent_id': payment.stripe_payment_intent_id,
+                        'amount': payment.amount,
+                        'status': payment.status,
+                        'type': 'payment_intent'
+                    } for payment in payments.items
+                ],
+                'failed_subscriptions': [
+                    {
+                        'id': sub.id,
+                        'user_id': sub.user_id,
+                        'user_email': sub.user.email if sub.user else None,
+                        'user_name': sub.user.username if sub.user else None,
+                        'status': sub.status,
+                        'failed_payment_count': sub.failed_payment_count,
+                        'current_period_end': sub.current_period_end.isoformat() if sub.current_period_end else None,
+                        'type': 'subscription'
+                    } for sub in failed_subscriptions
+                ],
+                'pagination': {
+                    'page': page,
+                    'pages': payments.pages,
+                    'per_page': per_page,
+                    'total': payments.total,
+                    'has_next': payments.has_next,
+                    'has_prev': payments.has_prev
+                }
+            }
+            
+        except Exception as e:
+            return {'error': f'Failed to get failed payments: {str(e)}'}

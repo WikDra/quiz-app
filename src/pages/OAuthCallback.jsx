@@ -1,5 +1,5 @@
 // filepath: d:\wysypisko\backend\projekt\quiz-app\src\pages\OAuthCallback.jsx
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { API_BASE_URL } from '../utils/constants';
@@ -7,12 +7,22 @@ import { API_BASE_URL } from '../utils/constants';
 const OAuthCallback = () => {
   const navigate = useNavigate();
   const [status, setStatus] = useState('Processing login...');
-  const { verifyAuthState, updateAuthStateFromTokens, refreshToken } = useAuth();
+  const { verifyAuthState, updateAuthStateFromTokens } = useAuth();
+  const processedRef = useRef(false);
   
   useEffect(() => {
+    // Prevent multiple executions
+    if (processedRef.current) {
+      return;
+    }
+    
     const processOAuthLogin = async () => {
       try {
+        processedRef.current = true;
         setStatus('Verifying authentication...');
+        
+        // Wait a bit for cookies to be set by the backend
+        await new Promise(resolve => setTimeout(resolve, 500));
         
         // First try to directly verify the auth state
         const isVerified = await verifyAuthState();
@@ -24,7 +34,7 @@ const OAuthCallback = () => {
           return;
         }
         
-        // If not verified, try to update auth state from tokens
+        // If not verified, try to update auth state from tokens (ONE attempt only)
         setStatus('Updating authentication state...');
         const isUpdated = await updateAuthStateFromTokens();
         
@@ -35,19 +45,8 @@ const OAuthCallback = () => {
           return;
         }
         
-        // If still not authenticated, try refreshing the token
-        setStatus('Refreshing authentication...');
-        const isRefreshed = await refreshToken();
-        
-        if (isRefreshed && await verifyAuthState()) {
-          console.log('Authentication refreshed successfully');
-          setStatus('Login successful!');
-          setTimeout(() => navigate('/home'), 1000);
-          return;
-        }
-        
         // If all attempts fail, redirect to login
-        console.error('All authentication attempts failed');
+        console.error('OAuth authentication failed');
         setStatus('Authentication failed.');
         setTimeout(() => navigate('/login'), 2000);
       } catch (error) {
@@ -59,7 +58,7 @@ const OAuthCallback = () => {
     
     // Add a small delay to ensure cookies are properly set
     setTimeout(processOAuthLogin, 1000);
-  }, [navigate, verifyAuthState, updateAuthStateFromTokens, refreshToken]);
+  }, []); // Remove dependencies to prevent re-execution
 
   return (
     <div className="oauth-callback">

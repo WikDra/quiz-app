@@ -165,7 +165,12 @@ export const AuthProvider = ({ children }) => {
         setUser(sanitizedUser);
         localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(sanitizedUser));
         
-        if (!tokenRefreshTimer) {
+        // Only schedule refresh if we don't have an active timer and no recent refresh
+        const lastSchedule = localStorage.getItem('lastTokenRefreshSchedule');
+        const shouldSchedule = !tokenRefreshTimer && 
+          (!lastSchedule || now - parseInt(lastSchedule, 10) > 60000); // 1 minute cooldown
+        
+        if (shouldSchedule) {
           scheduleTokenRefreshRef.current();
         }
         return true;
@@ -344,6 +349,13 @@ let refreshTimeout = null;
     }
 
     // If we got here, we either have no expiration time or it's too close/passed
+    // But don't refresh immediately if we just did a refresh recently
+    const lastRefresh = localStorage.getItem('lastTokenRefresh');
+    if (lastRefresh && now - parseInt(lastRefresh, 10) < 60000) { // Don't refresh if done in last minute
+      console.log('Token refresh attempted too recently, skipping');
+      return;
+    }
+    
     console.log('No valid token expiration time found or too close to expiry, refreshing token now');
     refreshTokenRef.current().catch(err => {
       console.error('Error in immediate token refresh:', err);

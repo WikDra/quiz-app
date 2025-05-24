@@ -19,11 +19,11 @@ import '../styles/AdminPanel.css';
 const AdminPanel = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
-  
-  const [activeTab, setActiveTab] = useState('dashboard');
+    const [activeTab, setActiveTab] = useState('dashboard');
   const [dashboardStats, setDashboardStats] = useState(null);
   const [users, setUsers] = useState([]);
   const [offlinePayments, setOfflinePayments] = useState([]);
+  const [failedPayments, setFailedPayments] = useState({ payments: [], subscriptions: [] });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -35,7 +35,6 @@ const AdminPanel = () => {
       return;
     }
   }, [user, navigate]);
-
   // Load dashboard stats on mount
   useEffect(() => {
     if (activeTab === 'dashboard') {
@@ -44,6 +43,8 @@ const AdminPanel = () => {
       loadUsers();
     } else if (activeTab === 'payments') {
       loadOfflinePayments();
+    } else if (activeTab === 'failed-payments') {
+      loadFailedPayments();
     }
   }, [activeTab]);
 
@@ -102,6 +103,29 @@ const AdminPanel = () => {
       }
     } catch (err) {
       setError('Error loading offline payments');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadFailedPayments = async () => {
+    setLoading(true);
+    try {
+      const response = await fetch(`${API_BASE_URL}/admin/payments/failed`, {
+        credentials: 'include'
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setFailedPayments({
+          payments: data.failed_payments || [],
+          subscriptions: data.failed_subscriptions || []
+        });
+      } else {
+        setError('Failed to load failed payments');
+      }
+    } catch (err) {
+      setError('Error loading failed payments');
     } finally {
       setLoading(false);
     }
@@ -310,6 +334,62 @@ const AdminPanel = () => {
       </div>
     </div>
   );
+  const renderFailedPayments = () => (
+    <div className="failed-payments-management">
+      <h3>Failed Payments</h3>
+      
+      {failedPayments?.payments?.length > 0 && (
+        <div className="failed-payments-section">
+          <h4>Failed Payment Intents</h4>
+          <div className="payments-table">
+            {failedPayments.payments.map(payment => (
+              <div key={`payment-${payment.id}`} className="payment-row">
+                <div className="payment-info">
+                  <h4>Payment Intent: {payment.stripe_payment_intent_id}</h4>
+                  <p><strong>Amount:</strong> ${payment.amount}</p>
+                  <p><strong>Status:</strong> 
+                    <span className={`status-badge ${payment.status}`}>
+                      {payment.status}
+                    </span>
+                  </p>
+                  <p><strong>Type:</strong> {payment.type}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      
+      {failedPayments?.subscriptions?.length > 0 && (
+        <div className="failed-subscriptions-section">
+          <h4>Failed Subscriptions</h4>
+          <div className="payments-table">
+            {failedPayments.subscriptions.map(subscription => (
+              <div key={`subscription-${subscription.id}`} className="payment-row">
+                <div className="payment-info">
+                  <h4>{subscription.user_name} ({subscription.user_email})</h4>
+                  <p><strong>Status:</strong> 
+                    <span className={`status-badge ${subscription.status}`}>
+                      {subscription.status}
+                    </span>
+                  </p>
+                  <p><strong>Failed Attempts:</strong> {subscription.failed_payment_count}</p>
+                  <p><strong>Period End:</strong> {subscription.current_period_end ? new Date(subscription.current_period_end).toLocaleDateString() : 'N/A'}</p>
+                  <p><strong>Type:</strong> {subscription.type}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      
+      {(!failedPayments?.payments?.length && !failedPayments?.subscriptions?.length) && (
+        <div className="no-failed-payments">
+          <p>No failed payments found.</p>
+        </div>
+      )}
+    </div>
+  );
 
   if (!user || !user.is_admin) {
     return null; // Will redirect via useEffect
@@ -349,6 +429,12 @@ const AdminPanel = () => {
         >
           <FontAwesomeIcon icon={faCreditCard} /> Offline Payments
         </button>
+        <button 
+          className={`tab ${activeTab === 'failed-payments' ? 'active' : ''}`}
+          onClick={() => setActiveTab('failed-payments')}
+        >
+          Failed Payments
+        </button>
       </div>
 
       <div className="admin-content">
@@ -359,6 +445,7 @@ const AdminPanel = () => {
             {activeTab === 'dashboard' && renderDashboard()}
             {activeTab === 'users' && renderUsers()}
             {activeTab === 'payments' && renderPayments()}
+            {activeTab === 'failed-payments' && renderFailedPayments()}
           </>
         )}
       </div>

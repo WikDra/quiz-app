@@ -34,13 +34,13 @@ class QuizResource(Resource):
             if quiz_id:
                 logging.info(f"Getting quiz with ID: {quiz_id}")
                 
-                quiz = QuizController.get_quiz_by_id(quiz_id)
+                quiz_data, error = QuizController.get_quiz_by_id(quiz_id)
                 
-                if not quiz:
-                    logging.error(f"Quiz {quiz_id} not found")
+                if error or not quiz_data:
+                    logging.error(f"Quiz {quiz_id} not found: {error}")
                     return {'error': 'Quiz not found'}, 404
                 
-                return quiz, 200
+                return quiz_data, 200
             
             # Otherwise, get all quizzes
             category = request.args.get('category')
@@ -97,18 +97,35 @@ class QuizResource(Resource):
             # Add current user ID as author
             current_user_id = get_jwt_identity()
             
-            data['author_id'] = current_user_id
-            user = User.query.filter_by(google_id=current_user_id).first()
-            if user:
-                data['author_id'] = user.id
-                # Create quiz using QuizController
-                quiz, error = QuizController.create_quiz(data)
-                
-                if error:
-                    logging.error(f"Error creating quiz: {error}")
-                    return {'error': error}, 400
-                
-                return quiz, 201
+            # Add current user ID as author
+            current_user_id = get_jwt_identity()
+            
+            # Find user - handle both regular users and OAuth users
+            user = None
+            try:
+                # Try as regular user ID first
+                numeric_id = int(current_user_id)
+                if numeric_id < 1000000000:  # Regular user ID
+                    user = User.query.get(numeric_id)
+                else:  # Large number, likely Google ID
+                    user = User.query.filter_by(google_id=current_user_id).first()
+            except (ValueError, TypeError):
+                # If conversion fails, try as Google ID string
+                user = User.query.filter_by(google_id=current_user_id).first()
+            
+            if not user:
+                return {'error': 'User not found'}, 404
+            
+            data['author_id'] = user.id
+            
+            # Create quiz using QuizController
+            quiz, error = QuizController.create_quiz(data)
+            
+            if error:
+                logging.error(f"Error creating quiz: {error}")
+                return {'error': error}, 400
+            
+            return quiz, 201
             
         except Exception as e:
             logging.error(f"Error creating quiz: {str(e)}")

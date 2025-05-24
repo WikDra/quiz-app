@@ -130,6 +130,7 @@ class StripeSubscription(db.Model):
     current_period_end = db.Column(db.DateTime, nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     canceled_at = db.Column(db.DateTime, nullable=True)
+    failed_payment_count = db.Column(db.Integer, default=0)  # Track failed payment attempts
     
     # Relationship
     user = db.relationship('User', backref=db.backref('stripe_subscription', uselist=False))
@@ -144,7 +145,8 @@ class StripeSubscription(db.Model):
             'current_period_start': self.current_period_start.isoformat() if self.current_period_start else None,
             'current_period_end': self.current_period_end.isoformat() if self.current_period_end else None,
             'created_at': self.created_at.isoformat() if self.created_at else None,
-            'canceled_at': self.canceled_at.isoformat() if self.canceled_at else None
+            'canceled_at': self.canceled_at.isoformat() if self.canceled_at else None,
+            'failed_payment_count': self.failed_payment_count or 0
         }
 
 class OfflinePayment(db.Model):
