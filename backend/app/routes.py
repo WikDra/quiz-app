@@ -6,7 +6,7 @@ import logging
 import os
 from datetime import datetime
 from .user_controller import UserController, TokenBlacklistManager
-from .models import User, db
+from .models import User, db, OfflinePayment
 from utils.helpers import sanitize_input, validate_email
 from .quiz_controller import QuizController
 from .admin_controller import AdminController
@@ -318,6 +318,66 @@ class LogoutResource(Resource):
             resp.delete_cookie('visible_auth', path='/', domain=None, samesite='None')
             
             return resp, 200
+
+# ============= USER ENDPOINTS =============
+
+class UserOfflinePaymentRequestResource(Resource):
+    @jwt_required(locations=["cookies"])
+    def post(self):
+        """Allow users to request offline payment for premium access"""
+        try:
+            user_id = get_jwt_identity()
+            user = User.query.get(int(user_id))
+            
+            if not user:
+                return {'error': 'User not found'}, 404
+            
+            # Check if user already has premium
+            if user.has_premium_access:
+                return {'error': 'User already has premium access'}, 400
+            
+            # Check if user already has a pending offline payment request
+            existing_request = OfflinePayment.query.filter_by(
+                user_id=user.id,
+                status='pending'
+            ).first()
+            
+            if existing_request:
+                return {'error': 'You already have a pending offline payment request'}, 400
+            
+            data = request.get_json()
+            if not data:
+                return {'error': 'No data provided'}, 400
+            
+            # Validate required fields
+            required_fields = ['amount', 'paymentMethod', 'description']
+            for field in required_fields:
+                if field not in data or not data[field]:
+                    return {'error': f'Missing required field: {field}'}, 400
+            
+            # Create offline payment request
+            offline_payment = OfflinePayment(
+                user_id=user.id,
+                amount=float(data['amount']),
+                payment_method=data['paymentMethod'],
+                description=data['description'],
+                reference_number=data.get('referenceNumber', ''),
+                status='pending',
+                admin_id=1  # Will be updated when admin processes it
+            )
+            
+            db.session.add(offline_payment)
+            db.session.commit()
+            
+            return {
+                'message': 'Offline payment request submitted successfully',
+                'request_id': offline_payment.id
+            }, 201
+            
+        except Exception as e:
+            db.session.rollback()
+            logging.error(f"Error creating offline payment request: {str(e)}")
+            return {'error': 'Failed to submit offline payment request'}, 500
 
 # ============= ADMIN ENDPOINTS =============
 

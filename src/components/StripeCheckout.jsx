@@ -34,7 +34,7 @@ const CheckoutForm = ({ priceId, onSuccess, onError }) => {
 
       // When the customer clicks on the button, redirect them to Checkout.
       const result = await stripe.redirectToCheckout({
-        sessionId: session.id,
+        sessionId: session.sessionId,
       });
 
       if (result.error) {

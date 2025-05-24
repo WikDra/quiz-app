@@ -4,6 +4,7 @@ from flask_restful import Api
 from flask_cors import CORS
 from .extensions import db, oauth2  # Teraz importujemy db z extensions
 from .quizes import QuizResource, OptionsQuizResource
+from .stripe_resources import StripeCheckoutSessionResource, StripeWebhookResource
 from .routes import (
     RegisterResource, 
     LoginResource, 
@@ -14,6 +15,7 @@ from .routes import (
     UserMeResource, 
     LogoutResource,
     UserResource,
+    UserOfflinePaymentRequestResource,
     # Admin endpoints
     AdminDashboardResource,
     AdminUsersResource,
@@ -29,7 +31,6 @@ from utils.scheduled_tasks import setup_scheduled_tasks
 from .quizes import GetQuizzes
 from .payments import StripeWebhook, CreatePaymentIntent
 from flask_jwt_extended import JWTManager
-import stripe
 
 def create_app():
     app = Flask(__name__)
@@ -37,6 +38,9 @@ def create_app():
     # Wczytanie konfiguracji
     app.config.from_object('config.Config')
     app.config["SECRET_KEY"] = os.getenv("JWT_SECRET_KEY")
+    
+    # Initialize Stripe
+    import stripe
     stripe.api_key=os.getenv("STRIPE_SECRET_KEY")
     
     # Inicjalizacja bazy danych
@@ -127,14 +131,11 @@ def create_app():
     # Użytkownik
     api.add_resource(UserResource, '/users')
     api.add_resource(UserMeResource, '/users/me')
-
-    # Płatności
-    api.add_resource(CreatePaymentIntent, '/payments/create')
-    api.add_resource(StripeWebhook, '/payments/webhook')
+    api.add_resource(UserOfflinePaymentRequestResource, '/users/offline-payment-request')
     
-    # Stripe subscription endpoints (compatible with frontend)
-    from .stripe_controller import register_stripe_routes
-    register_stripe_routes(app)
+    # Stripe subscriptions
+    api.add_resource(StripeCheckoutSessionResource, '/stripe/create-checkout-session')
+    api.add_resource(StripeWebhookResource, '/stripe/webhook')
 
     # Admin endpoints
     api.add_resource(AdminDashboardResource, '/admin/dashboard')

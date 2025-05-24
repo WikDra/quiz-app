@@ -204,7 +204,7 @@ The application includes several debugging tools:
 1. **Using Stripe CLI**:
    ```bash
    # Terminal 1: Start webhook forwarding
-   stripe listen --forward-to localhost:5000/api/stripe/webhook
+   stripe listen --forward-to localhost:5000/stripe/webhook
    
    # Terminal 2: Trigger specific events
    stripe trigger checkout.session.completed

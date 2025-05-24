@@ -240,20 +240,14 @@ class AdminController:
                 return {'error': 'Payment not found'}
             
             if payment.status != 'pending':
-                return {'error': f'Payment is already {payment.status}'}
-            
-            # Approve payment
-            payment.approve(admin_user.id)
-            
-            # Grant premium access to user
-            user = User.query.get(payment.user_id)
-            if user:
-                user.has_premium_access = True
+                return {'error': f'Payment is already {payment.status}'}            # Approve payment
+            payment.approve_payment()
+            payment.admin_id = admin_user.id
                 
             db.session.commit()
             
             return {
-                'message': f'Payment approved and premium access granted to user {user.username}',
+                'message': f'Payment approved and premium access granted to user {payment.user.username}',
                 'payment': payment.to_dict()
             }
             
@@ -278,9 +272,9 @@ class AdminController:
             # Get rejection reason from request
             data = request.get_json() or {}
             rejection_reason = data.get('reason', 'No reason provided')
-            
-            # Reject payment
-            payment.reject(admin_user.id, rejection_reason)
+              # Reject payment
+            payment.reject_payment(rejection_reason)
+            payment.admin_id = admin_user.id
             db.session.commit()
             
             return {
