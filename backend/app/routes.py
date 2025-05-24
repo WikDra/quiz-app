@@ -9,6 +9,8 @@ from .user_controller import UserController, TokenBlacklistManager
 from .models import User, db
 from utils.helpers import sanitize_input, validate_email
 from .quiz_controller import QuizController
+from .admin_controller import AdminController
+from .admin_middleware import admin_required
 logging.basicConfig(level=logging.DEBUG)
 
 class RegisterResource(Resource):
@@ -316,4 +318,125 @@ class LogoutResource(Resource):
             resp.delete_cookie('visible_auth', path='/', domain=None, samesite='None')
             
             return resp, 200
-        
+
+# ============= ADMIN ENDPOINTS =============
+
+class AdminDashboardResource(Resource):
+    @jwt_required(locations=["cookies"])
+    @admin_required
+    def get(self):
+        """Get admin dashboard statistics"""
+        try:
+            stats = AdminController.get_dashboard_stats()
+            return stats, 200
+        except Exception as e:
+            logging.error(f"Error getting dashboard stats: {str(e)}")
+            return {'error': 'Failed to load dashboard stats'}, 500
+
+class AdminUsersResource(Resource):
+    @jwt_required(locations=["cookies"])
+    @admin_required
+    def get(self):
+        """Get all users with pagination"""
+        try:
+            users = AdminController.get_users()
+            return users, 200
+        except Exception as e:
+            logging.error(f"Error getting users: {str(e)}")
+            return {'error': 'Failed to load users'}, 500
+
+class AdminUserPromoteResource(Resource):
+    @jwt_required(locations=["cookies"])
+    @admin_required
+    def post(self, user_id):
+        """Promote user to admin"""
+        try:
+            result = AdminController.promote_user_to_admin(user_id)
+            return result, 200
+        except Exception as e:
+            logging.error(f"Error promoting user {user_id}: {str(e)}")
+            return {'error': 'Failed to promote user'}, 500
+
+class AdminUserDemoteResource(Resource):
+    @jwt_required(locations=["cookies"])
+    @admin_required
+    def post(self, user_id):
+        """Demote admin to user"""
+        try:
+            result = AdminController.demote_admin_to_user(user_id)
+            return result, 200
+        except Exception as e:
+            logging.error(f"Error demoting user {user_id}: {str(e)}")
+            return {'error': 'Failed to demote user'}, 500
+
+class AdminUserEditResource(Resource):
+    @jwt_required(locations=["cookies"])
+    @admin_required
+    def put(self, user_id):
+        """Update user information"""
+        try:
+            result = AdminController.update_user(user_id)
+            return result, 200
+        except Exception as e:
+            logging.error(f"Error updating user {user_id}: {str(e)}")
+            return {'error': 'Failed to update user'}, 500
+
+class AdminOfflinePaymentsResource(Resource):
+    @jwt_required(locations=["cookies"])
+    @admin_required
+    def get(self):
+        """Get offline payments"""
+        try:
+            payments = AdminController.get_offline_payments()
+            return payments, 200
+        except Exception as e:
+            logging.error(f"Error getting offline payments: {str(e)}")
+            return {'error': 'Failed to load payments'}, 500
+    
+    @jwt_required(locations=["cookies"])
+    @admin_required
+    def post(self):
+        """Create new offline payment"""
+        try:
+            result = AdminController.create_offline_payment()
+            return result, 201
+        except Exception as e:
+            logging.error(f"Error creating offline payment: {str(e)}")
+            return {'error': 'Failed to create payment'}, 500
+
+class AdminOfflinePaymentApproveResource(Resource):
+    @jwt_required(locations=["cookies"])
+    @admin_required
+    def post(self, payment_id):
+        """Approve offline payment"""
+        try:
+            result = AdminController.approve_offline_payment(payment_id)
+            return result, 200
+        except Exception as e:
+            logging.error(f"Error approving payment {payment_id}: {str(e)}")
+            return {'error': 'Failed to approve payment'}, 500
+
+class AdminOfflinePaymentRejectResource(Resource):
+    @jwt_required(locations=["cookies"])
+    @admin_required
+    def post(self, payment_id):
+        """Reject offline payment"""
+        try:
+            result = AdminController.reject_offline_payment(payment_id)
+            return result, 200
+        except Exception as e:
+            logging.error(f"Error rejecting payment {payment_id}: {str(e)}")
+            return {'error': 'Failed to reject payment'}, 500
+
+class AdminUserEditResource(Resource):
+    @jwt_required(locations=["cookies"])
+    @admin_required
+    def put(self, user_id):
+        """Update user information"""
+        try:
+            result = AdminController.update_user(user_id)
+            return result, 200
+        except Exception as e:
+            logging.error(f"Error updating user {user_id}: {str(e)}")
+            return {'error': 'Failed to update user'}, 500
+

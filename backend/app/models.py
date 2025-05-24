@@ -61,7 +61,8 @@ class User(db.Model):
     email = db.Column(db.String(100), unique=True, nullable=False)
     password_hash = db.Column(db.String(128), nullable=True)
     avatar_url = db.Column(db.String(255), nullable=True)
-    is_admin = db.Column(db.Boolean, default=False)    
+    is_admin = db.Column(db.Boolean, default=False)
+    role = db.Column(db.String(20), default='user')  # 'user', 'admin', 'moderator'
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     google_id = db.Column(db.String(100), nullable=True, unique=True)
     social_provider = db.Column(db.String(20), nullable=True)
@@ -77,6 +78,24 @@ class User(db.Model):
         if not self.password_hash:
             return False
         return check_password_hash(self.password_hash, password)
+    
+    def has_role(self, role):
+        """Check if user has specific role"""
+        return self.role == role
+    
+    def is_admin_user(self):
+        """Check if user is admin"""
+        return self.role == 'admin' or self.is_admin
+    
+    def promote_to_admin(self):
+        """Promote user to admin"""
+        self.role = 'admin'
+        self.is_admin = True
+    
+    def demote_to_user(self):
+        """Demote admin to regular user"""
+        self.role = 'user'
+        self.is_admin = False
         
     def to_dict(self):
         """Convert user to dictionary"""
@@ -86,7 +105,9 @@ class User(db.Model):
             'fullName': self.username,  # Map username to fullName for frontend compatibility
             'email': self.email,
             'avatar': self.avatar_url or 'https://i.pravatar.cc/150?img=3',  # Default avatar
-            'level': 'Początkujący',  # Default level            'is_admin': self.is_admin,
+            'level': 'Początkujący',  # Default level            
+            'is_admin': self.is_admin_user(),
+            'role': self.role,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'has_premium_access': self.has_premium_access, # Include in dict
             'premium_since': self.premium_since.isoformat() if self.premium_since else None,
@@ -124,6 +145,63 @@ class StripeSubscription(db.Model):
             'current_period_end': self.current_period_end.isoformat() if self.current_period_end else None,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'canceled_at': self.canceled_at.isoformat() if self.canceled_at else None
+        }
+
+class OfflinePayment(db.Model):
+    """Model for tracking offline payments approved by admin"""
+    __tablename__ = 'offline_payments'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    amount = db.Column(db.Float, nullable=False)
+    currency = db.Column(db.String(3), default='PLN')
+    description = db.Column(db.Text, nullable=True)
+    admin_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    status = db.Column(db.String(20), default='pending')  # pending, approved, rejected
+    payment_method = db.Column(db.String(50), nullable=True)  # cash, bank_transfer, etc.
+    reference_number = db.Column(db.String(100), nullable=True)
+    notes = db.Column(db.Text, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    approved_at = db.Column(db.DateTime, nullable=True)
+    
+    # Relationships
+    user = db.relationship('User', foreign_keys=[user_id], backref='offline_payments')
+    admin = db.relationship('User', foreign_keys=[admin_id])
+    
+    def approve_payment(self, admin_notes=None):
+        """Approve the offline payment"""
+        self.status = 'approved'
+        self.approved_at = datetime.utcnow()
+        if admin_notes:
+            self.notes = admin_notes
+        
+        # Grant premium access to user
+        self.user.has_premium_access = True
+        self.user.premium_since = datetime.utcnow()
+    
+    def reject_payment(self, admin_notes=None):
+        """Reject the offline payment"""
+        self.status = 'rejected'
+        if admin_notes:
+            self.notes = admin_notes
+    
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'user_id': self.user_id,
+            'user_email': self.user.email if self.user else None,
+            'user_name': self.user.username if self.user else None,
+            'amount': self.amount,
+            'currency': self.currency,
+            'description': self.description,
+            'admin_id': self.admin_id,
+            'admin_name': self.admin.username if self.admin else None,
+            'status': self.status,
+            'payment_method': self.payment_method,
+            'reference_number': self.reference_number,
+            'notes': self.notes,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'approved_at': self.approved_at.isoformat() if self.approved_at else None
         }
 
 class BlacklistedToken(db.Model):

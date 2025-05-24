@@ -13,7 +13,16 @@ from .routes import (
     GoogleProfile, 
     UserMeResource, 
     LogoutResource,
-    UserResource
+    UserResource,
+    # Admin endpoints
+    AdminDashboardResource,
+    AdminUsersResource,
+    AdminUserPromoteResource,
+    AdminUserDemoteResource,
+    AdminUserEditResource,
+    AdminOfflinePaymentsResource,
+    AdminOfflinePaymentApproveResource,
+    AdminOfflinePaymentRejectResource
 )
 from .user_controller import setup_jwt_blacklist_callbacks
 from utils.scheduled_tasks import setup_scheduled_tasks
@@ -127,6 +136,14 @@ def create_app():
     from .stripe_controller import register_stripe_routes
     register_stripe_routes(app)
 
-
+    # Admin endpoints
+    api.add_resource(AdminDashboardResource, '/admin/dashboard')
+    api.add_resource(AdminUsersResource, '/admin/users')
+    api.add_resource(AdminUserPromoteResource, '/admin/users/<int:user_id>/promote')
+    api.add_resource(AdminUserDemoteResource, '/admin/users/<int:user_id>/demote')
+    api.add_resource(AdminUserEditResource, '/users/<int:user_id>')
+    api.add_resource(AdminOfflinePaymentsResource, '/admin/payments/offline')
+    api.add_resource(AdminOfflinePaymentApproveResource, '/admin/payments/offline/<int:payment_id>/approve')
+    api.add_resource(AdminOfflinePaymentRejectResource, '/admin/payments/offline/<int:payment_id>/reject')
 
     return app

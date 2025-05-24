@@ -5,7 +5,7 @@ import { useQuiz } from '../context/QuizContext';
 import { 
   faSearch, faBell, faUser, faClock, 
   faTrophy, faCheck, faCalendar, faSignOut,
-  faPlus, faPlay, faTrash, faPencilAlt
+  faPlus, faPlay, faTrash, faPencilAlt, faUserShield
 } from '@fortawesome/free-solid-svg-icons';
 import { useAuth } from '../context/AuthContext';
 import { QUIZ_CATEGORIES, DIFFICULTY_MAP } from '../utils/constants';
@@ -47,7 +47,8 @@ const NavigationBar = memo(({
   onLogout,
   showUserMenu,
   toggleUserMenu,
-  onSettingsClick
+  onSettingsClick,
+  onAdminClick
 }) => {
   const unreadNotificationsCount = useMemo(
     () => notifications.filter(n => n.unread).length,
@@ -106,6 +107,12 @@ const NavigationBar = memo(({
                 <FontAwesomeIcon icon={faUser} />
                 <span>Ustawienia konta</span>
               </button>
+              {user.role === 'admin' && (
+                <button onClick={onAdminClick} className="user-menu-item admin-menu-item">
+                  <FontAwesomeIcon icon={faUserShield} />
+                  <span>Panel Administratora</span>
+                </button>
+              )}
               <button onClick={onLogout} className="user-menu-item">
                 <FontAwesomeIcon icon={faSignOut} />
                 <span>Wyloguj się</span>
@@ -490,6 +497,11 @@ const HomePage = () => {
     setShowUserMenu(false);
   }, [navigate]);
 
+  const handleAdminClick = useCallback(() => {
+    navigate('/admin');
+    setShowUserMenu(false);
+  }, [navigate]);
+
   const handleLogout = useCallback(() => {
     setShowLogoutModal(true);
   }, []);
@@ -554,6 +566,7 @@ const HomePage = () => {
         showUserMenu={showUserMenu}
         toggleUserMenu={toggleUserMenu}
         onSettingsClick={handleSettingsClick}
+        onAdminClick={handleAdminClick}
       />
 
       <div className="main-content">

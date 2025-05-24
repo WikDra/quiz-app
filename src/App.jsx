@@ -22,6 +22,7 @@ const OAuthCallback = lazy(() => import('./pages/OAuthCallback'));
 const PremiumPage = lazy(() => import('./pages/PremiumPage'));
 const PaymentSuccessPage = lazy(() => import('./pages/PaymentSuccessPage')); 
 const TestPremium = lazy(() => import('./pages/TestPremium')); // Dodaj stronę testową
+const AdminPanel = lazy(() => import('./pages/AdminPanel'));
 
 // Komponent ładowania dla Suspense
 const LoadingFallback = memo(() => (
@@ -76,6 +77,25 @@ const PublicRoute = memo(({ children }) => {
   }
   
   return !user ? children : <Navigate to="/home" />;
+});
+
+const AdminRoute = memo(({ children }) => {
+  const { user, loading } = useAuth();
+  
+  if (loading) {
+    return <LoadingFallback />;
+  }
+  
+  if (!user) {
+    return <Navigate to="/login" />;
+  }
+  
+  // Check if user has admin role
+  if (user.role !== 'admin') {
+    return <Navigate to="/home" />;
+  }
+  
+  return children;
 });
 
 // Komponent wykrywający stan online/offline z memoizacją komunikatu
@@ -157,6 +177,11 @@ const AppRoutes = memo(() => {
               <TestPremium />
             </PrivateRoute>
           } /> {/* Dodaj nową ścieżkę */}
+          <Route path="/admin" element={
+            <AdminRoute>
+              <AdminPanel />
+            </AdminRoute>
+          } />
 
           <Route path="/" element={user ? <Navigate to="/home" /> : <LandingPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
