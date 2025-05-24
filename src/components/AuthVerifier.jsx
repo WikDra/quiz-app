@@ -35,9 +35,8 @@ const AuthVerifier = () => {
         console.warn("AuthVerifier: Auth state invalid, attempting token refresh");
         setConsecutiveFailures(prev => prev + 1);
         
-        // Try to refresh the token
-        const refreshSuccess = await refreshToken();
-        
+        // Try to refresh the token with force=true to bypass the time check
+        const refreshSuccess = await refreshToken(true);
         if (refreshSuccess) {
           console.log("AuthVerifier: Token refreshed successfully");
           setConsecutiveFailures(0);
@@ -66,18 +65,34 @@ const AuthVerifier = () => {
   }, [verifyAuthState, refreshToken, logout, user, consecutiveFailures, navigate]);
 
   useEffect(() => {
-    // First verification on mount 
-    if (user) {
-      performVerification();
-    }
+    let mounted = true;
     
-    // Uruchom weryfikację co 5 minut (5 * 60 * 1000 ms)
-    const interval = setInterval(performVerification, 5 * 60 * 1000); 
+    const runVerification = async () => {
+      if (!mounted || !user) return;
+      
+      // Get last verification time
+      const lastVerifyTime = localStorage.getItem('lastAuthVerifyTime');
+      const now = Date.now();
+      
+      // Don't verify if we checked in the last 30 seconds
+      if (lastVerifyTime && now - parseInt(lastVerifyTime, 10) < 30000) {
+        return;
+      }
+      
+      await performVerification();
+    };
+
+    // First verification on mount with slight delay to prevent race conditions
+    const initialTimeout = setTimeout(runVerification, 1000);
+    
+    // Then run verification every 5 minutes
+    const interval = setInterval(runVerification, 5 * 60 * 1000);
     
     setTimer(interval);
 
-    // Czyszczenie interwału po odmontowaniu komponentu
     return () => {
+      mounted = false;
+      clearTimeout(initialTimeout);
       if (timer) {
         clearInterval(timer);
       }

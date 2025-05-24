@@ -316,6 +316,7 @@ const HomePage = () => {
 
   // Guard against missing user or invalid auth
   useEffect(() => {
+    
     async function checkAuth() {
       if (!user) {
         console.log("User not found, redirecting to login");

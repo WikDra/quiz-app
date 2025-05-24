@@ -1,26 +1,58 @@
-"""
-User model definition
-"""
-from datetime import datetime
-from flask_bcrypt import generate_password_hash, check_password_hash
-from models import db
+from . import db
+from werkzeug.security import generate_password_hash, check_password_hash
+from .extensions import db
 
-class InvalidToken(db.Model):
-    """Store invalidated/blacklisted tokens"""
-    __tablename__ = 'invalid_tokens'
+from datetime import datetime
+
+class Quiz(db.Model):
+    __tablename__ = 'quizzes'
     
     id = db.Column(db.Integer, primary_key=True)
-    jti = db.Column(db.String(36), nullable=False, unique=True)
-    type = db.Column(db.String(16), nullable=False)
-    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
-    expires = db.Column(db.DateTime, nullable=False)
-    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    title = db.Column(db.String(100), nullable=False)
+    description = db.Column(db.Text, nullable=True)
+    category = db.Column(db.String(50), nullable=True)
+    difficulty = db.Column(db.String(20), nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    author_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+    
+    # Relationship with questions (using JSON for simplicity in this version)
+    questions_json = db.Column(db.Text, nullable=True)
+    
+    def to_dict(self):
+        """Convert quiz to dictionary"""
+        import json
+        
+        result = {
+            'id': self.id,
+            'title': self.title,
+            'description': self.description,
+            'category': self.category,
+            'difficulty': self.difficulty,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None,
+            'author_id': self.author_id
+        }
+        
+        # Parse questions from JSON
+        if self.questions_json:
+            try:
+                result['questions'] = json.loads(self.questions_json)
+            except:
+                result['questions'] = []
+        else:
+            result['questions'] = []
+            
+        return result
+class Payment(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    stripe_payment_intent_id = db.Column(db.String(100), nullable=False, unique=True)
+    amount = db.Column(db.Float, nullable=False)
+    status = db.Column(db.String(50), nullable=False)
 
-    @classmethod
-    def is_token_revoked(cls, jti):
-        """Check if a token is in the blacklist"""
-        return cls.query.filter_by(jti=jti).first() is not None
-
+    def __repr__(self):
+        return f"<Payment {self.stripe_payment_intent_id} - {self.status}>"
+    
 class User(db.Model):
     __tablename__ = 'users'
     
@@ -31,7 +63,7 @@ class User(db.Model):
     avatar_url = db.Column(db.String(255), nullable=True)
     is_admin = db.Column(db.Boolean, default=False)    
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    social_id = db.Column(db.String(100), nullable=True, unique=True)
+    google_id = db.Column(db.String(100), nullable=True, unique=True)
     social_provider = db.Column(db.String(20), nullable=True)
     has_premium_access = db.Column(db.Boolean, default=False) # Add premium access field
     premium_since = db.Column(db.DateTime, nullable=True) # Track when premium was activated

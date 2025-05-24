@@ -14,7 +14,14 @@ export const useQuiz = () => {
 // Pomocnicza funkcja do obsługi odpowiedzi HTTP
 const handleResponse = async (response, errorMessage) => {
   if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}));
+    const errorText = await response.text();
+    let errorData = {};
+    try {
+      errorData = JSON.parse(errorText);
+    } catch (e) {
+      // If response is not JSON (e.g. HTML error page), use the errorMessage
+      console.error('Non-JSON error response:', errorText);
+    }
     throw new Error(errorData.error || errorMessage);
   }
   return response.json();
@@ -36,7 +43,12 @@ export const QuizProvider = ({ children }) => {
 
     setLoading(true);    try {
       const response = await fetch(API_ENDPOINTS.QUIZ, {
-        credentials: 'include' // Include cookies with request
+        method: 'GET',
+        credentials: 'include',
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json'
+        }
       });
       const data = await handleResponse(response, 'Failed to fetch quizzes');
       setQuizzes(data.quizzes || []);

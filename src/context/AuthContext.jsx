@@ -26,7 +26,7 @@ export const AuthProvider = ({ children }) => {
       }
       
       // Call the API to clear cookies
-      const response = await fetch(`${API_BASE_URL}/api/logout`, {
+      const response = await fetch(`${API_BASE_URL}/logout`, {
         method: 'POST',
         credentials: 'include',
         headers: {
@@ -83,7 +83,8 @@ export const AuthProvider = ({ children }) => {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 5000); // 5s timeout
 
-      const response = await fetch(`${API_BASE_URL}/api/users/me/profile`, {
+      const response = await fetch(`${API_BASE_URL}/users/me`, {
+        credentials: 'include',
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
@@ -164,28 +165,30 @@ export const AuthProvider = ({ children }) => {
 
   // Update ref to point to the latest version of the function
   verifyAuthStateRef.current = verifyAuthState;
+const TOKEN_REFRESH_INTERVAL = 270000; // 4.5 minutes (slightly less than backend expiry)
+const MINIMUM_REFRESH_INTERVAL = 30000; // 30 seconds
+let refreshTimeout = null;
 
   // Function to refresh token when it's about to expire
-  const refreshToken = useCallback(async () => {
+  const refreshToken = useCallback(async (force = false) => {
+    const now = Date.now();
+
     try {
-      console.log("Attempting to refresh access token...");
-      
-      // Check if we have a recent refresh to avoid rate limiting
-      const lastRefreshTime = localStorage.getItem('lastTokenRefresh');
-      const now = Date.now();
-      if (lastRefreshTime) {
-        const timeSinceLastRefresh = now - parseInt(lastRefreshTime, 10);
-        if (timeSinceLastRefresh < 30000) { // 30 seconds minimum between refreshes
+      if (!force) {
+        const lastRefresh = localStorage.getItem('lastTokenRefresh');
+        if (lastRefresh && now - parseInt(lastRefresh, 10) < MINIMUM_REFRESH_INTERVAL) {
           console.log("Skipping token refresh - too soon since last refresh");
           return true;
         }
       }
 
+      console.log("Attempting to refresh access token...");
+
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 5000); // 5s timeout
 
       // Attempt to refresh token
-      const response = await fetch(`${API_BASE_URL}/api/token/refresh`, {
+      const response = await fetch(`${API_BASE_URL}/refresh`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -200,13 +203,21 @@ export const AuthProvider = ({ children }) => {
         const data = await response.json();
         console.log("Access token refreshed successfully");
         
-        if (data.token_status?.issued_at) {
-          const expirationTime = new Date(data.token_status.issued_at).getTime() + (60 * 60 * 1000);
-          localStorage.setItem('tokenExpiration', expirationTime.toString());
-          localStorage.setItem('lastTokenRefresh', now.toString());
+        // Store refresh time
+        localStorage.setItem('lastTokenRefresh', now.toString());
+        
+        // Cancel any existing refresh timeout
+        if (refreshTimeout) {
+          clearTimeout(refreshTimeout);
         }
         
-        scheduleTokenRefreshRef.current();
+        // Schedule next refresh
+        refreshTimeout = setTimeout(() => {
+          refreshTokenRef.current(true).catch(err => {
+            console.error('Error in scheduled token refresh:', err);
+          });
+        }, TOKEN_REFRESH_INTERVAL);
+        
         return true;
       } else {
         const errorText = await response.text();
@@ -354,7 +365,7 @@ export const AuthProvider = ({ children }) => {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 5000); // 5s timeout
 
-      const response = await fetch(`${API_BASE_URL}/api/users/me/profile`, {
+      const response = await fetch(`${API_BASE_URL}/users/me`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
@@ -436,7 +447,6 @@ export const AuthProvider = ({ children }) => {
   }, [API_BASE_URL, scheduleTokenRefresh, tokenRefreshTimer]);
   // Helper function to update the auth state based on current tokens (now cookies)
   const updateAuthStateFromTokens = useCallback(async () => {
-    // Check if we have a recent update to avoid unnecessary API calls
     const lastAuthUpdate = localStorage.getItem('lastAuthUpdate');
     const now = Date.now();
     if (lastAuthUpdate) {
@@ -445,46 +455,32 @@ export const AuthProvider = ({ children }) => {
         return true;
       }
     }
-
     try {
-      // Make an API call to get fresh user data - now uses cookies
-      const response = await fetch(`${API_BASE_URL}/api/users/me/profile`, {
+      const response = await fetch(`${API_BASE_URL}/users/me`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
         },
-        credentials: 'include' // Include cookies with request
+        credentials: 'include', // Poprawka: zawsze include
       });
       if (response.ok) {
         const data = await response.json();
-        
-        // Ensure user data has all required fields with proper structure
         const userData = {
           ...data,
-          // Make sure both avatar and fullName are set correctly
           avatar: data.avatar_url || data.avatar || 'https://i.pravatar.cc/150?img=3',
           fullName: data.username || data.fullName || 'User',
-          level: data.level || 'Początkujący',
-          // Ensure stats structure is consistent
-          stats: data.stats || {
-            quizzes: 0,
-            bestTime: '0min',
-            correctAnswers: 0
-          }
+          level: data.level || USER_LEVELS.BEGINNER,
+          stats: data.stats || { quizzes: 0, bestTime: '0min', correctAnswers: 0 }
         };
-
         setUser(userData);
-        localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(userData));        localStorage.setItem('lastAuthUpdate', now.toString());
+        localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(userData));
+        localStorage.setItem('lastAuthUpdate', now.toString());
         return true;
       } else {
-        console.error('Failed to fetch user profile:', await response.text());
-        // Explicitly clear user state when API request fails
         setUser(null);
         localStorage.removeItem(STORAGE_KEYS.USER);
       }
     } catch (err) {
-      console.error('Failed to update auth state from token:', err);
-      // Use cached data if available
       const cachedUser = localStorage.getItem(STORAGE_KEYS.USER);
       if (cachedUser) {
         try {
@@ -496,7 +492,8 @@ export const AuthProvider = ({ children }) => {
       }
     }
     return false;
-  }, [API_BASE_URL]);  // Pierwsze ładowanie i okresowe sprawdzanie stanu uwierzytelniania
+  }, [API_BASE_URL]);
+  // Pierwsze ładowanie i okresowe sprawdzanie stanu uwierzytelniania
   useEffect(() => {
     let checkTimer = null;
     const CHECK_INTERVAL = 60000; // Check every minute
@@ -572,9 +569,8 @@ export const AuthProvider = ({ children }) => {
       if (!fullName?.trim() || !email?.trim() || !password?.trim()) {
         return { success: false, error: 'Wszystkie pola są wymagane' };
       }
-      
       // Bezpośrednie wywołanie do API rejestracji
-      const response = await fetch(`${API_BASE_URL}/api/register`, {
+      const response = await fetch(`${API_BASE_URL}/register`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -586,23 +582,34 @@ export const AuthProvider = ({ children }) => {
           password 
         }),
       });
-      
       const data = await response.json();
-      
       if (!response.ok) {
         return { 
           success: false, 
           error: data.error || 'Wystąpił błąd podczas rejestracji' 
         };
       }
-      
-      // Po udanej rejestracji odświeżamy listę użytkowników
+      // Po udanej rejestracji pobierz profil użytkownika z backendu
+      const profileResp = await fetch(`${API_BASE_URL}/users/me`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+      });
+      if (profileResp.ok) {
+        const userData = await profileResp.json();
+        const sanitizedUser = {
+          ...userData,
+          avatar: userData.avatar_url || userData.avatar || 'https://i.pravatar.cc/150?img=3',
+          fullName: userData.username || userData.fullName || 'User',
+          level: userData.level || USER_LEVELS.BEGINNER,
+          stats: userData.stats || { quizzes: 0, bestTime: '0min', correctAnswers: 0 },
+        };
+        setUser(sanitizedUser);
+        localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(sanitizedUser));
+      }
       await fetchUsers();
-      
-      // Ustawiamy zalogowanego użytkownika
-      setUser(data);
-      localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(data));
-      
       return { success: true };
     } catch (error) {
       return { 
@@ -611,17 +618,14 @@ export const AuthProvider = ({ children }) => {
       };
     }
   }, [fetchUsers]);
-    // Zaktualizowana funkcja logowania
+  // Zaktualizowana funkcja logowania
   const login = useCallback(async (email, password) => {
     try {
       if (!email?.trim() || !password?.trim()) {
         return { success: false, error: 'Email i hasło są wymagane' };
       }
-      
-      console.log("AuthContext: Wysyłanie żądania logowania do API...");
-      
       // Bezpośrednie wywołanie do API logowania
-      const response = await fetch(`${API_BASE_URL}/api/login`, {
+      const response = await fetch(`${API_BASE_URL}/login`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -629,43 +633,42 @@ export const AuthProvider = ({ children }) => {
         credentials: 'include', // Include cookies in request
         body: JSON.stringify({ email, password }),
       });
-      
-      console.log("AuthContext: Otrzymano odpowiedź z API:", response.status, response.statusText);
-      
       const data = await response.json();
-      console.log("AuthContext: Dane odpowiedzi:", { 
-        success: response.ok, 
-        hasUserData: !!data.user_data,
-        error: data.error || null
-      });
-      
       if (!response.ok) {
         return { 
           success: false, 
           error: data.error || 'Nieprawidłowy email lub hasło' 
         };
       }
-      
-      // Ustawiamy zalogowanego użytkownika
-      if (data.user_data) {
-        console.log("AuthContext: Ustawianie danych użytkownika");
-        setUser(data.user_data);
-        localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(data.user_data));
-        
-        // Set up token refresh schedule
+      // Po zalogowaniu pobierz profil użytkownika z backendu
+      const profileResp = await fetch(`${API_BASE_URL}/users/me`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+      });
+      if (profileResp.ok) {
+        const userData = await profileResp.json();
+        const sanitizedUser = {
+          ...userData,
+          avatar: userData.avatar_url || userData.avatar || 'https://i.pravatar.cc/150?img=3',
+          fullName: userData.username || userData.fullName || 'User',
+          level: userData.level || USER_LEVELS.BEGINNER,
+          stats: userData.stats || { quizzes: 0, bestTime: '0min', correctAnswers: 0 },
+        };
+        setUser(sanitizedUser);
+        localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(sanitizedUser));
         scheduleTokenRefresh();
-      } else {
-        console.warn("AuthContext: Brak danych użytkownika w odpowiedzi API");
       }
-      
       return { success: true };
     } catch (error) {
-      console.error("AuthContext: Błąd podczas logowania:", error);
       return { 
         success: false, 
         error: error.message || 'Wystąpił błąd podczas logowania' 
       };
-    }  }, [API_BASE_URL, scheduleTokenRefresh]);
+    }
+  }, [API_BASE_URL, scheduleTokenRefresh]);
 
   // Aktualizacja awatara użytkownika
   const updateUserAvatar = useCallback(async (userId, avatarUrl) => {
@@ -678,7 +681,7 @@ export const AuthProvider = ({ children }) => {
         };
       }
       
-      const response = await fetch(`${API_BASE_URL}/api/users/${userId}/avatar`, {
+      const response = await fetch(`${API_BASE_URL}/users/${userId}/avatar`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -735,7 +738,7 @@ export const AuthProvider = ({ children }) => {
       }
       
       // Use the user-specific update endpoint instead of updating all users at once
-      const response = await fetch(`${API_BASE_URL}/api/users/${userId}`, {
+      const response = await fetch(`${API_BASE_URL}/users/${userId}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',

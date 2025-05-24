@@ -1,57 +1,15 @@
 """
-Security setup utilities
+Utility script to generate security keys and OAuth credentials
 """
 import os
+import base64
 import secrets
 import json
-from pathlib import Path
 from dotenv import load_dotenv, set_key
-
-def generate_secret_key(length=32):
-    """Generate a secure random secret key"""
-    return secrets.token_urlsafe(length)
-
-def update_env_file():
-    """Update .env file with required security settings if they don't exist"""
-    env_path = Path(__file__).parent.parent / '.env'
-      # Default values for required settings
-    required_settings = {
-        'FLASK_SECRET_KEY': lambda: generate_secret_key(32),
-        'JWT_SECRET_KEY': lambda: generate_secret_key(32),
-        'STRIPE_WEBHOOK_SECRET': lambda: 'whsec_test_' + generate_secret_key(24),
-        'STRIPE_SECRET_KEY': lambda: 'sk_test_' + generate_secret_key(24),
-        'STRIPE_PUBLISHABLE_KEY': lambda: 'pk_test_' + generate_secret_key(24),
-    }
-    
-    # Read existing .env content
-    existing_settings = {}
-    if env_path.exists():
-        with open(env_path, 'r', encoding='utf-8') as f:
-            for line in f:
-                if '=' in line:
-                    key, value = line.strip().split('=', 1)
-                    existing_settings[key] = value
-
-    # Update settings
-    updated = False
-    for key, default_value in required_settings.items():
-        if key not in existing_settings or not existing_settings[key]:
-            existing_settings[key] = default_value()
-            updated = True
-    
-    # Write updated .env file if changes were made
-    if updated:
-        with open(env_path, 'w', encoding='utf-8') as f:
-            for key, value in existing_settings.items():
-                f.write(f'{key}={value}\n')
-        
-        return True
-    
-    return False
 
 def generate_key(length=32):
     """Generate a secure random key"""
-    return secrets.token_urlsafe(length)
+    return base64.b64encode(secrets.token_bytes(length)).decode('utf-8')
 
 def setup_security():
     """Set up security keys and OAuth credentials"""
@@ -115,33 +73,6 @@ def setup_security():
             print("\nGoogle OAuth credentials not provided. You can set them later in the .env file.")
     else:
         print(f"\nUsing existing Google OAuth credentials")
-    
-    # Setup Stripe API keys
-    stripe_publishable_key = os.environ.get('STRIPE_PUBLISHABLE_KEY')
-    stripe_secret_key = os.environ.get('STRIPE_SECRET_KEY')
-    stripe_webhook_secret = os.environ.get('STRIPE_WEBHOOK_SECRET')
-    
-    if not stripe_publishable_key or not stripe_secret_key or not stripe_webhook_secret:
-        print("\nStripe API keys not found or incomplete.")
-        print("To set up Stripe payment processing, you need to:")
-        print("1. Create a Stripe account: https://stripe.com")
-        print("2. Get your API keys from the Stripe Dashboard")
-        print("3. Set up a webhook endpoint in Stripe for http://your-domain/api/webhook")
-        print("4. Enter the credentials below:\n")
-        
-        stripe_publishable_key = input("Enter Stripe Publishable Key: ")
-        stripe_secret_key = input("Enter Stripe Secret Key: ")
-        stripe_webhook_secret = input("Enter Stripe Webhook Secret: ")
-        
-        if stripe_publishable_key and stripe_secret_key and stripe_webhook_secret:
-            set_key(dotenv_path, 'STRIPE_PUBLISHABLE_KEY', stripe_publishable_key)
-            set_key(dotenv_path, 'STRIPE_SECRET_KEY', stripe_secret_key)
-            set_key(dotenv_path, 'STRIPE_WEBHOOK_SECRET', stripe_webhook_secret)
-            print("\nStripe API keys saved to .env file")
-        else:
-            print("\nStripe API keys not provided or incomplete. You can set them later in the .env file.")
-    else:
-        print(f"\nUsing existing Stripe API keys")
     
     print("\nSecurity setup complete. The application is now configured with secure keys.")
 

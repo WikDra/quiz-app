@@ -8,7 +8,7 @@ import secrets
 from functools import wraps
 from flask import jsonify, current_app
 from flask_jwt_extended import get_jwt_identity
-from models.user import User
+from app.models import User
 
 def sanitize_input(input_str):
     """

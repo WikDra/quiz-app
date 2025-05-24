@@ -116,7 +116,7 @@ const Login = () => {
             type="button" 
             onClick={() => {
               // Redirect to Google login endpoint
-              window.location.href = "http://localhost:5000/api/login/google";
+              window.location.href = "http://localhost:5000/auth/oauth2/redirect";
               // No polling needed since the server redirects back to our callback URL
             }} 
             className="google-login-button"

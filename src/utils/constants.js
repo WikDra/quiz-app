@@ -5,9 +5,26 @@
 // API URLs
 export const API_BASE_URL = 'http://localhost:5000';
 export const API_ENDPOINTS = {
-  QUIZ: `${API_BASE_URL}/api/quiz`,
-  USERS: `${API_BASE_URL}/api/users`, // Zmieniamy na /api/users zamiast users.json
-  QUIZ_BY_ID: (id) => `${API_BASE_URL}/api/quiz/${id}`
+  PRODUCTS: `${API_BASE_URL}/products`,
+  PRODUCT_BY_ID: (id) => `${API_BASE_URL}/products/${id}`,
+  REGISTER: `${API_BASE_URL}/auth/register`,
+  LOGIN: `${API_BASE_URL}/auth/login`,
+  REFRESH: `${API_BASE_URL}/refresh`,
+  GOOGLE_LOGIN_REDIRECT: `${API_BASE_URL}/auth/oauth2/redirect`,
+  GOOGLE_LOGIN_CALLBACK: `${API_BASE_URL}/auth/oauth2/callback`,
+  PROFILE: `${API_BASE_URL}/profile`,
+  CREATE_PAYMENT: `${API_BASE_URL}/payments/create`,
+  STRIPE_WEBHOOK: `${API_BASE_URL}/payments/webhook`,
+  CREATE_PAYMENT_GENERIC: `${API_BASE_URL}/payments/create-payment`,
+  QUIZ: `${API_BASE_URL}/quiz`,
+  QUIZ_BY_ID: (id) => `${API_BASE_URL}/quiz/${id}`,
+  QUIZ_MY: `${API_BASE_URL}/quiz/my`,
+  QUIZ_ATTEMPT: (id) => `${API_BASE_URL}/quiz/${id}/attempt`,
+  
+  // User endpoints
+  USER_PROFILE: `${API_BASE_URL}/api/user/profile`,
+  USER_STATS: `${API_BASE_URL}/api/user/stats`,
+  USER_PASSWORD: `${API_BASE_URL}/api/user/password`,
 };
 
 // Kategorie quizów

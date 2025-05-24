@@ -11,7 +11,7 @@ export default defineConfig({
       // Forward API calls to Flask backend
       '/api': {
         // Use IPv4 address to avoid IPv6 connection errors
-        target: 'http://127.0.0.1:5000',
+        target: 'http://localhost:5000',
         changeOrigin: true,
         secure: false,
       }

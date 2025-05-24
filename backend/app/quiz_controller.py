@@ -1,16 +1,9 @@
-"""
-Controller for quiz management
-"""
-import json
+import re
 from flask import current_app
-from models import db
-from models.quiz import Quiz
-
-class QuizController:
-    """
-    Controller for quiz operations
-    """
-    
+from .models import db, User, Quiz
+import json
+from utils.helpers import sanitize_input, validate_email
+class QuizController:    
     @staticmethod
     def get_all_quizzes(category=None, difficulty=None, search=None):
         """
