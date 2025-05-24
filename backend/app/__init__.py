@@ -15,6 +15,8 @@ from .routes import (
     LogoutResource,
     UserResource
 )
+from .user_controller import setup_jwt_blacklist_callbacks
+from utils.scheduled_tasks import setup_scheduled_tasks
 from .quizes import GetQuizzes
 from .payments import StripeWebhook, CreatePaymentIntent
 from flask_jwt_extended import JWTManager
@@ -34,6 +36,9 @@ def create_app():
     
     # Inicjalizacja JWT
     jwt = JWTManager(app)
+    
+    # Setup JWT blacklist callbacks
+    setup_jwt_blacklist_callbacks(jwt)
     
     # Add JWT error handlers for debugging
     @jwt.expired_token_loader
@@ -56,6 +61,9 @@ def create_app():
     
     with app.app_context():
         db.create_all()
+        
+    # Setup scheduled tasks for token cleanup
+    setup_scheduled_tasks(app)
 
     # Enable CORS for all routes
     frontend_url = os.getenv('FRONTEND_URL', 'http://localhost:5173')

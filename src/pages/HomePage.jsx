@@ -11,6 +11,8 @@ import { useAuth } from '../context/AuthContext';
 import { QUIZ_CATEGORIES, DIFFICULTY_MAP } from '../utils/constants';
 import '../styles/HomePage.css';
 import StripeCheckout from '../components/StripeCheckout'; // Import StripeCheckout
+import LogoutConfirmationModal from '../components/LogoutConfirmationModal';
+import '../styles/LogoutModal.css';
 
 // Komponent powiadomień
 const NotificationsDropdown = memo(({ notifications, onNotificationClick }) => (
@@ -313,6 +315,7 @@ const HomePage = () => {
   const { quizzes, deleteQuiz, loading, error, refreshQuizzes, filterQuizzes } = useQuiz();
   const navigate = useNavigate();
   const [showPremiumModal, setShowPremiumModal] = React.useState(false); // State for premium modal
+  const [showLogoutModal, setShowLogoutModal] = React.useState(false); // State for logout confirmation modal
 
   // Guard against missing user or invalid auth
   useEffect(() => {
@@ -488,9 +491,24 @@ const HomePage = () => {
   }, [navigate]);
 
   const handleLogout = useCallback(() => {
-    logout();
-    navigate('/');
+    setShowLogoutModal(true);
+  }, []);
+
+  const handleLogoutConfirm = useCallback(async () => {
+    setShowLogoutModal(false);
+    try {
+      await logout();
+      navigate('/');
+    } catch (error) {
+      console.error('Error during logout:', error);
+      // Still navigate even if logout failed
+      navigate('/');
+    }
   }, [logout, navigate]);
+
+  const handleLogoutCancel = useCallback(() => {
+    setShowLogoutModal(false);
+  }, []);
 
   const handleGoPremium = () => {
     // Option 1: Navigate to a dedicated premium page
@@ -609,6 +627,15 @@ const HomePage = () => {
           </div>
         </div>
       )} */}
+
+      {/* Logout Confirmation Modal */}
+      {showLogoutModal && (
+        <LogoutConfirmationModal
+          isOpen={showLogoutModal}
+          onConfirm={handleLogoutConfirm}
+          onCancel={handleLogoutCancel}
+        />
+      )}
 
     </div>
   );

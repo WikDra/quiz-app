@@ -3,9 +3,174 @@ Controller for user management
 """
 import re
 from flask import current_app
+from flask_jwt_extended import get_jwt
 from utils.helpers import sanitize_input, validate_email
-from .models import User, db
+from .models import User, db, BlacklistedToken
 import logging
+from datetime import datetime, timedelta
+
+class TokenBlacklistManager:
+    """
+    Manager for JWT token blacklisting operations
+    """
+    
+    @staticmethod
+    def blacklist_token(jti, token_type, user_id, expires_at):
+        """
+        Add a token to the blacklist
+        
+        Args:
+            jti (str): JWT ID
+            token_type (str): Type of token ('access' or 'refresh')
+            user_id (int or str): User ID who owns the token
+            expires_at (datetime): When the token expires
+        """
+        try:
+            # Convert user_id to string to handle large OAuth IDs
+            user_id_str = str(user_id)
+            
+            blacklisted_token = BlacklistedToken(
+                jti=jti,
+                token_type=token_type,
+                user_id=user_id_str,
+                expires_at=expires_at
+            )
+            db.session.add(blacklisted_token)
+            db.session.commit()
+            
+            current_app.logger.info(f"Token {jti} blacklisted for user {user_id_str}")
+            return True
+        except Exception as e:
+            current_app.logger.error(f"Error blacklisting token {jti}: {str(e)}")
+            db.session.rollback()
+            return False
+    
+    @staticmethod
+    def blacklist_all_user_tokens(user_id):
+        """
+        Blacklist all active tokens for a specific user
+        This is useful for "logout from all devices" functionality
+        
+        Args:
+            user_id (int or str): User ID whose tokens should be blacklisted
+        """
+        try:
+            # Convert user_id to string to handle large OAuth IDs
+            user_id_str = str(user_id)
+            
+            # Create a special blacklist entry that invalidates all tokens for this user
+            # We use a special jti pattern to mark all tokens for this user as invalid
+            # Set short expiry to avoid blocking future logins
+            special_jti = f"user_logout_all_{user_id_str}_{datetime.utcnow().timestamp()}"
+            
+            blacklisted_token = BlacklistedToken(
+                jti=special_jti,
+                token_type='all_user_tokens',
+                user_id=user_id_str,
+                expires_at=datetime.utcnow() + timedelta(hours=1)  # Only 1 hour to avoid blocking future logins
+            )
+            db.session.add(blacklisted_token)
+            db.session.commit()
+            
+            current_app.logger.info(f"All tokens blacklisted for user {user_id_str}")
+            return True
+        except Exception as e:
+            current_app.logger.error(f"Error blacklisting all tokens for user {user_id}: {str(e)}")
+            db.session.rollback()
+            return False
+    
+    @staticmethod
+    def is_token_blacklisted(jti, user_id=None):
+        """
+        Check if a token is blacklisted
+        
+        Args:
+            jti (str): JWT ID to check
+            user_id (int or str, optional): User ID for additional checks
+            
+        Returns:
+            bool: True if token is blacklisted
+        """
+        try:
+            # Check direct blacklist
+            if BlacklistedToken.is_blacklisted(jti):
+                return True
+            
+            # Check if all user tokens are blacklisted
+            if user_id:
+                # Convert user_id to string to handle large OAuth IDs
+                user_id_str = str(user_id)
+                
+                user_blacklist = BlacklistedToken.query.filter(
+                    BlacklistedToken.user_id == user_id_str,
+                    BlacklistedToken.token_type == 'all_user_tokens',
+                    BlacklistedToken.expires_at > datetime.utcnow()
+                ).first()
+                
+                if user_blacklist:
+                    current_app.logger.info(f"Token {jti} blacklisted via user-wide blacklist for user {user_id_str}")
+                    return True
+            
+            return False
+        except Exception as e:
+            current_app.logger.error(f"Error checking blacklist status for token {jti}: {str(e)}")
+            # On error, be safe and consider token valid to avoid blocking legitimate users
+            return False
+    
+    @staticmethod
+    def cleanup_expired_tokens():
+        """
+        Remove expired tokens from blacklist
+        This should be called periodically to keep the database clean
+        
+        Returns:
+            int: Number of tokens removed
+        """
+        try:
+            expired_count = BlacklistedToken.cleanup_expired_tokens()
+            current_app.logger.info(f"Cleaned up {expired_count} expired blacklisted tokens")
+            return expired_count
+        except Exception as e:
+            current_app.logger.error(f"Error cleaning up expired tokens: {str(e)}")
+            return 0
+
+def setup_jwt_blacklist_callbacks(jwt_manager):
+    """
+    Setup JWT blacklist callbacks
+    This function should be called when initializing the JWT manager
+    
+    Args:
+        jwt_manager: Flask-JWT-Extended instance
+    """
+    
+    @jwt_manager.token_in_blocklist_loader
+    def check_if_token_revoked(jwt_header, jwt_payload):
+        """
+        Callback to check if a JWT exists in the blacklist
+        This is called automatically by Flask-JWT-Extended for every protected route
+        """
+        jti = jwt_payload.get('jti')
+        user_id = jwt_payload.get('sub')  # 'sub' is the standard JWT claim for user ID
+        
+        if not jti:
+            current_app.logger.warning("JWT token without jti claim encountered")
+            return True  # Block tokens without jti
+        
+        try:
+            # Convert user_id to int if it's a string
+            if user_id and isinstance(user_id, str):
+                user_id = int(user_id)
+        except (ValueError, TypeError):
+            current_app.logger.warning(f"Invalid user_id in JWT payload: {user_id}")
+            user_id = None
+        
+        is_blacklisted = TokenBlacklistManager.is_token_blacklisted(jti, user_id)
+        
+        if is_blacklisted:
+            current_app.logger.info(f"Blocked blacklisted token {jti} for user {user_id}")
+        
+        return is_blacklisted
+
 class UserController:
     """
     Controller for user operations

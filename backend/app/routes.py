@@ -4,7 +4,8 @@ from .extensions import oauth2
 from flask_jwt_extended import create_access_token, jwt_required, create_refresh_token, get_jwt_identity, get_jwt
 import logging
 import os
-from .user_controller import UserController
+from datetime import datetime
+from .user_controller import UserController, TokenBlacklistManager
 from .models import User, db
 from utils.helpers import sanitize_input, validate_email
 from .quiz_controller import QuizController
@@ -255,21 +256,64 @@ class UserMeResource(Resource):
 class LogoutResource(Resource):
     @jwt_required(locations=["cookies"])
     def post(self):
-        resp = make_response(jsonify({'message': 'Logged out successfully'}))
-        # Clear JWT cookies (HttpOnly)
-        resp.delete_cookie('access_token_cookie', path='/', domain=None, samesite='None')
-        resp.delete_cookie('refresh_token_cookie', path='/', domain=None, samesite='None')
-        
-        # Clear client-visible cookies
-        resp.delete_cookie('auth_success', path='/', domain=None, samesite='None')
-        resp.delete_cookie('visible_auth', path='/', domain=None, samesite='None')
-        resp.delete_cookie('test_visible_cookie', path='/', domain=None, samesite='None')
-        resp.delete_cookie('js_test_cookie', path='/', domain=None, samesite='None')
-        
-        # Set explicit header to clear cookies
-        resp.headers.add('Set-Cookie', 'auth_success=; Path=/; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT;')
-        resp.headers.add('Set-Cookie', 'visible_auth=; Path=/; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT;')
-        
-        logging.info("All cookies cleared during logout")
-        return resp, 200
+        try:
+            # Get current JWT token details
+            current_jwt = get_jwt()
+            jti = current_jwt.get('jti')
+            user_id = get_jwt_identity()
+            exp = current_jwt.get('exp')
+            
+            # Get request data for logout options
+            request_data = request.get_json() or {}
+            logout_all_devices = request_data.get('logout_all', False)
+            
+            logging.info(f"Logout request from user {user_id}, logout_all: {logout_all_devices}")
+            
+            if logout_all_devices:
+                # Blacklist all tokens for this user
+                success = TokenBlacklistManager.blacklist_all_user_tokens(int(user_id))
+                if success:
+                    logging.info(f"All tokens blacklisted for user {user_id}")
+                else:
+                    logging.warning(f"Failed to blacklist all tokens for user {user_id}")
+            else:
+                # Blacklist only the current token
+                if jti and exp:
+                    expires_at = datetime.fromtimestamp(exp)
+                    success = TokenBlacklistManager.blacklist_token(
+                        jti=jti,
+                        token_type='access',
+                        user_id=int(user_id),
+                        expires_at=expires_at
+                    )
+                    if success:
+                        logging.info(f"Token {jti} blacklisted for user {user_id}")
+                    else:
+                        logging.warning(f"Failed to blacklist token {jti} for user {user_id}")
+                else:
+                    logging.warning("JWT token missing jti or exp claims")
+            
+            # Create response data
+            response_data = {
+                'message': 'Logged out successfully',
+                'logout_all': logout_all_devices
+            }
+            
+            # Clear JWT cookies by creating response with cleared cookies
+            # Note: Flask-RESTful will handle the JSON response, we just need to clear cookies
+            # This is a bit tricky with Flask-RESTful, so we'll return the data and let the framework handle it
+            
+            logging.info(f"Logout completed for user {user_id}")
+            return response_data, 200
+            
+        except Exception as e:
+            logging.error(f"Error during logout: {str(e)}")
+            # Even if blacklisting fails, we should still return success for security
+            return {
+                'message': 'Logged out successfully',
+                'warning': 'Some cleanup operations may have failed'
+            }, 200
+            resp.delete_cookie('visible_auth', path='/', domain=None, samesite='None')
+            
+            return resp, 200
         

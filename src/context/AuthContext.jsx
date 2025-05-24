@@ -16,8 +16,20 @@ export const AuthProvider = ({ children }) => {
   const refreshTokenRef = useRef(() => {});
   const logoutRef = useRef(() => {});
 
+  // Funkcja do broadcasta wylogowania do innych kart
+  const broadcastLogoutToOtherTabs = useCallback(() => {
+    try {
+      // Use localStorage event to notify other tabs
+      localStorage.setItem('logout_broadcast', Date.now().toString());
+      // Remove it immediately to trigger the event in other tabs
+      localStorage.removeItem('logout_broadcast');
+    } catch (error) {
+      console.error('Error broadcasting logout to other tabs:', error);
+    }
+  }, []);
+
   // Wylogowanie użytkownika
-  const logout = useCallback(async () => {
+  const logout = useCallback(async (logoutFromAllDevices = false) => {
     try {
       // Clear token refresh timer
       if (tokenRefreshTimer) {
@@ -25,17 +37,28 @@ export const AuthProvider = ({ children }) => {
         setTokenRefreshTimer(null);
       }
       
-      // Call the API to clear cookies
+      // Call the API to clear cookies and blacklist tokens
       const response = await fetch(`${API_BASE_URL}/logout`, {
         method: 'POST',
         credentials: 'include',
         headers: {
           'Content-Type': 'application/json',
-        }
+        },
+        body: JSON.stringify({
+          logout_all: logoutFromAllDevices
+        })
       });
       
       if (!response.ok) {
         console.warn("API logout endpoint nie zwrócił poprawnej odpowiedzi:", response.status);
+      } else {
+        const data = await response.json();
+        console.log("Logout successful:", data);
+        
+        // If we logged out from all devices, broadcast to other tabs
+        if (logoutFromAllDevices) {
+          broadcastLogoutToOtherTabs();
+        }
       }
     } catch (error) {
       console.error("Błąd podczas wylogowywania:", error);
@@ -43,6 +66,13 @@ export const AuthProvider = ({ children }) => {
       // Clear local state regardless of API success
       setUser(null);
       localStorage.removeItem(STORAGE_KEYS.USER);
+      localStorage.removeItem('cachedUsers');
+      localStorage.removeItem('lastUsersFetch');
+      localStorage.removeItem('lastTokenRefresh');
+      localStorage.removeItem('tokenExpiration');
+      
+      // Broadcast logout to other tabs
+      broadcastLogoutToOtherTabs();
       
       // Opcjonalnie przekieruj na stronę logowania
       if (window.location.pathname !== '/login') {
@@ -53,6 +83,28 @@ export const AuthProvider = ({ children }) => {
   
   // Update ref to point to the latest version of the function
   logoutRef.current = logout;
+
+  // Listen for logout broadcasts from other tabs
+  useEffect(() => {
+    const handleStorageChange = (e) => {
+      if (e.key === 'logout_broadcast' && e.newValue) {
+        console.log('Logout broadcast received from another tab');
+        // Another tab logged out, clear our state
+        setUser(null);
+        localStorage.removeItem(STORAGE_KEYS.USER);
+        localStorage.removeItem('cachedUsers');
+        localStorage.removeItem('lastUsersFetch');
+        
+        // Redirect to login if not already there
+        if (window.location.pathname !== '/login') {
+          window.location.href = '/login';
+        }
+      }
+    };
+
+    window.addEventListener('storage', handleStorageChange);
+    return () => window.removeEventListener('storage', handleStorageChange);
+  }, []);
 
   // Funkcja do sprawdzania, czy użytkownik jest zalogowany poprzez weryfikację JWT
   const verifyAuthState = useCallback(async () => {
@@ -704,6 +756,11 @@ let refreshTimeout = null;
     }
   }, [API_BASE_URL, scheduleTokenRefresh]);
 
+  // Funkcja do wylogowania ze wszystkich urządzeń
+  const logoutFromAllDevices = useCallback(async () => {
+    return logout(true);
+  }, [logout]);
+
   // Aktualizacja awatara użytkownika
   const updateUserAvatar = useCallback(async (userId, avatarUrl) => {
     try {
@@ -836,7 +893,8 @@ let refreshTimeout = null;
     refreshUserState,
     updateAuthStateFromTokens,
     verifyAuthState,
-    refreshToken
+    refreshToken,
+    logoutFromAllDevices
   };
 
   return (
