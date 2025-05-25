@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 from flask import jsonify, request, current_app
 from flask_restful import Resource
 from flask_jwt_extended import jwt_required, get_jwt_identity
-from .models import User, StripeSubscription, _process_subscription_by_email
+from .models import User, StripeSubscription, Payment, _process_subscription_by_email
 from .extensions import db
 
 class StripeCheckoutSessionResource(Resource):
@@ -142,7 +142,6 @@ class StripeWebhookResource(Resource):
                 
                 customer_id = subscription.get('customer')
                 subscription_id = subscription['id']
-                
                 if customer_id:
                     customer = stripe.Customer.retrieve(customer_id)
                     customer_email = customer.get('email')
@@ -154,7 +153,77 @@ class StripeWebhookResource(Resource):
             elif event_type == 'invoice.payment_failed':
                 invoice = event['data']['object']
                 current_app.logger.warning(f"Invoice payment failed: {invoice['id']}")
-                # TODO: Consider notifying user or admin about payment failure
+                
+                try:
+                    # Get subscription and customer info
+                    subscription_id = invoice.get('subscription')
+                    customer_id = invoice.get('customer')
+                    payment_intent_id = invoice.get('payment_intent')
+                    amount_due = invoice.get('amount_due', 0) / 100  # Convert from cents to dollars
+                    
+                    if customer_id:
+                        # Get customer details from Stripe
+                        customer = stripe.Customer.retrieve(customer_id)
+                        customer_email = customer.get('email')
+                        
+                        if customer_email:
+                            # Find user by email
+                            user = User.query.filter_by(email=customer_email).first()
+                            
+                            if user:
+                                # Update subscription status if it exists
+                                if subscription_id:
+                                    stripe_sub = StripeSubscription.query.filter_by(
+                                        stripe_subscription_id=subscription_id
+                                    ).first()
+                                    
+                                    if stripe_sub:
+                                        # Increment failed payment count
+                                        stripe_sub.failed_payment_count = (stripe_sub.failed_payment_count or 0) + 1
+                                        stripe_sub.status = 'past_due'  # Mark as past due
+                                        
+                                        # If too many failures, cancel subscription
+                                        if stripe_sub.failed_payment_count >= 3:
+                                            stripe_sub.status = 'canceled'
+                                            stripe_sub.ends_at = datetime.utcnow()
+                                            user.has_premium_access = False
+                                            current_app.logger.info(f"Subscription {subscription_id} canceled due to repeated payment failures for user {customer_email}")
+                                        
+                                        db.session.add(stripe_sub)
+                                
+                                # Create Payment record for admin tracking
+                                if payment_intent_id:
+                                    # Check if payment record already exists
+                                    existing_payment = Payment.query.filter_by(
+                                        stripe_payment_intent_id=payment_intent_id
+                                    ).first()
+                                    
+                                    if not existing_payment:
+                                        failed_payment = Payment(
+                                            stripe_payment_intent_id=payment_intent_id,
+                                            amount=amount_due,
+                                            status='failed'
+                                        )
+                                        db.session.add(failed_payment)
+                                        current_app.logger.info(f"Created failed payment record for payment_intent {payment_intent_id}")
+                                    else:
+                                        # Update existing payment status
+                                        existing_payment.status = 'failed'
+                                        db.session.add(existing_payment)
+                                        current_app.logger.info(f"Updated payment {payment_intent_id} status to failed")
+                                
+                                db.session.commit()
+                                current_app.logger.info(f"Processed failed payment for user {customer_email}")
+                            else:
+                                current_app.logger.warning(f"User not found for email {customer_email} during failed payment processing")
+                        else:
+                            current_app.logger.warning(f"No email found for customer {customer_id} during failed payment processing")
+                    else:
+                        current_app.logger.warning(f"No customer ID found in failed invoice {invoice['id']}")
+                        
+                except Exception as payment_error:
+                    current_app.logger.error(f"Error processing failed payment for invoice {invoice['id']}: {str(payment_error)}")
+                    # Don't raise exception to avoid webhook retry loops
 
         except Exception as e:
             current_app.logger.error(f"Error processing webhook {event_type}: {str(e)}")
