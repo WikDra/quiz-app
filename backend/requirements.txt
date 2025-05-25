@@ -1,7 +1,63 @@
-Flask-CORS
-schedule
-APScheduler
+# Core Flask framework and extensions
+Flask>=2.3.0
+Flask-RESTful>=0.3.10
+Flask-CORS>=4.0.0
+Flask-JWT-Extended>=4.5.0
+Flask-SQLAlchemy>=3.0.0
+Flask-Migrate>=4.0.0
+Flask-Mail>=0.9.1
+
+# Security and Authentication
+Werkzeug>=2.3.0
+PyJWT>=2.8.0
+bcrypt>=4.0.0
+cryptography>=41.0.0
+
+# OAuth Integration
+Authlib>=1.2.0
+requests>=2.31.0
+oauthlib>=3.2.0
+
+# Payment Processing
+stripe>=6.0.0
+
+# Background Tasks and Scheduling  
+APScheduler>=3.10.0
+schedule>=1.2.0
+
+# Database
+SQLAlchemy>=2.0.0
+alembic>=1.12.0
+
+# Environment and Configuration
+python-dotenv>=1.0.0
+click>=8.1.0
+
+# Validation and utilities
+email-validator>=2.0.0
+validators>=0.22.0
+python-dateutil>=2.8.0
+
+# HTTP and networking
+urllib3>=2.0.0
+certifi>=2023.7.22
+
+# Testing Dependencies
 pytest>=7.0.0
 pytest-flask>=1.2.0
 pytest-cov>=4.0.0
 coverage>=7.0.0
+pytest-mock>=3.11.0
+factory-boy>=3.3.0
+
+# Development and debugging tools
+markupsafe>=2.1.0
+itsdangerous>=2.1.0
+jinja2>=3.1.0
+blinker>=1.6.0
+
+# JSON handling
+jsonschema>=4.19.0
+
+# Timezone handling
+pytz>=2023.3
