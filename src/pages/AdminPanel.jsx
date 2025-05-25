@@ -57,12 +57,13 @@ const AdminPanel = () => {
       
       if (response.ok) {
         const data = await response.json();
-        setDashboardStats(data.stats);
-      } else {
+        setDashboardStats(data.stats);      } else {
         setError('Failed to load dashboard stats');
+        setDashboardStats(null);
       }
     } catch (err) {
       setError('Error loading dashboard stats');
+      setDashboardStats(null);
     } finally {
       setLoading(false);
     }
@@ -74,15 +75,16 @@ const AdminPanel = () => {
       const response = await fetch(`${API_BASE_URL}/admin/users`, {
         credentials: 'include'
       });
-      
-      if (response.ok) {
+        if (response.ok) {
         const data = await response.json();
-        setUsers(data.users);
+        setUsers(data.users || []);
       } else {
         setError('Failed to load users');
+        setUsers([]);
       }
     } catch (err) {
       setError('Error loading users');
+      setUsers([]);
     } finally {
       setLoading(false);
     }
@@ -93,16 +95,22 @@ const AdminPanel = () => {
     try {
       const response = await fetch(`${API_BASE_URL}/admin/payments/offline`, {
         credentials: 'include'
-      });
-      
-      if (response.ok) {
+      });        if (response.ok) {
         const data = await response.json();
-        setOfflinePayments(data.payments);
+        console.log('Offline payments response:', data);
+        // Backend może zwrócić array bezpośrednio albo obiekt z payments
+        if (Array.isArray(data)) {
+          setOfflinePayments(data);
+        } else {
+          setOfflinePayments(data.payments || []);
+        }
       } else {
         setError('Failed to load offline payments');
+        setOfflinePayments([]);
       }
     } catch (err) {
       setError('Error loading offline payments');
+      setOfflinePayments([]);
     } finally {
       setLoading(false);
     }
@@ -120,12 +128,13 @@ const AdminPanel = () => {
         setFailedPayments({
           payments: data.failed_payments || [],
           subscriptions: data.failed_subscriptions || []
-        });
-      } else {
+        });      } else {
         setError('Failed to load failed payments');
+        setFailedPayments({ payments: [], subscriptions: [] });
       }
     } catch (err) {
       setError('Error loading failed payments');
+      setFailedPayments({ payments: [], subscriptions: [] });
     } finally {
       setLoading(false);
     }
@@ -255,12 +264,12 @@ const AdminPanel = () => {
       )}
     </div>
   );
-
   const renderUsers = () => (
     <div className="users-management">
       <h3>User Management</h3>
       <div className="users-table">
-        {users.map(user => (
+        {users && users.length > 0 ? (
+          users.map(user => (
           <div key={user.id} className="user-row">
             <div className="user-info">
               <img src={user.avatar} alt={user.username} className="user-avatar" />
@@ -284,53 +293,59 @@ const AdminPanel = () => {
                 <button 
                   onClick={() => demoteUser(user.id)}
                   className="btn btn-secondary"
-                >
-                  Demote to User
+                >                  Demote to User
                 </button>
               )}
             </div>
           </div>
-        ))}
+        ))
+        ) : (
+          <div className="no-users">
+            <p>No users found</p>
+          </div>
+        )}
       </div>
     </div>
-  );
-
-  const renderPayments = () => (
+  );const renderPayments = () => (
     <div className="payments-management">
       <h3>Offline Payments</h3>
       <div className="payments-table">
-        {offlinePayments.map(payment => (
-          <div key={payment.id} className="payment-row">
-            <div className="payment-info">
-              <h4>{payment.user_name} ({payment.user_email})</h4>
-              <p><strong>Amount:</strong> {payment.amount} {payment.currency}</p>
-              <p><strong>Description:</strong> {payment.description}</p>
-              <p><strong>Status:</strong> 
-                <span className={`status-badge ${payment.status}`}>
-                  {payment.status}
-                </span>
-              </p>
-              <p><strong>Created:</strong> {new Date(payment.created_at).toLocaleDateString()}</p>
-            </div>
-            
-            {payment.status === 'pending' && (
-              <div className="payment-actions">
-                <button 
-                  onClick={() => approvePayment(payment.id)}
-                  className="btn btn-success"
-                >
-                  <FontAwesomeIcon icon={faCheck} /> Approve
-                </button>
-                <button 
-                  onClick={() => rejectPayment(payment.id)}
-                  className="btn btn-danger"
-                >
-                  <FontAwesomeIcon icon={faTimes} /> Reject
-                </button>
+        {offlinePayments && offlinePayments.length > 0 ? (
+          offlinePayments.map(payment => (
+            <div key={payment.id} className="payment-row">
+              <div className="payment-info">
+                <h4>{payment.user_name} ({payment.user_email})</h4>
+                <p><strong>Amount:</strong> {payment.amount} {payment.currency}</p>
+                <p><strong>Description:</strong> {payment.description}</p>
+                <p><strong>Status:</strong> 
+                  <span className={`status-badge ${payment.status}`}>
+                    {payment.status}
+                  </span>
+                </p>
+                <p><strong>Created:</strong> {new Date(payment.created_at).toLocaleDateString()}</p>
               </div>
-            )}
-          </div>
-        ))}
+              
+              {payment.status === 'pending' && (
+                <div className="payment-actions">
+                  <button 
+                    onClick={() => approvePayment(payment.id)}
+                    className="btn btn-success"
+                  >
+                    <FontAwesomeIcon icon={faCheck} /> Approve
+                  </button>
+                  <button 
+                    onClick={() => rejectPayment(payment.id)}
+                    className="btn btn-danger"
+                  >
+                    <FontAwesomeIcon icon={faTimes} /> Reject
+                  </button>
+                </div>
+              )}
+            </div>
+          ))
+        ) : (
+          <p>No offline payments found.</p>
+        )}
       </div>
     </div>
   );
