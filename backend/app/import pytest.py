@@ -1,7 +1,8 @@
 import pytest
 from flask import json
 from .routes import RegisterResource, LoginResource
-from .models import User, db
+from .models import User
+from .extensions import db
 
 @pytest.fixture
 def client(app):

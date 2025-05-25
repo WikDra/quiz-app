@@ -1,6 +1,7 @@
 import re
 from flask import current_app, jsonify
-from .models import db, User, Quiz
+from .models import User, Quiz
+from .extensions import db
 import json
 from utils.helpers import sanitize_input, validate_email
 class QuizController:    

@@ -4,7 +4,8 @@ import json
 from datetime import datetime, timedelta
 from flask import request, jsonify, current_app
 from flask_restful import Resource
-from .models import Payment, User, StripeSubscription, _process_subscription_by_email, db  
+from .models import Payment, User, StripeSubscription, _process_subscription_by_email
+from .extensions import db  
 
 class CreatePaymentIntent(Resource):
     def post(self):

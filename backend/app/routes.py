@@ -6,7 +6,8 @@ import logging
 import os
 from datetime import datetime
 from .user_controller import UserController, TokenBlacklistManager
-from .models import User, db, OfflinePayment
+from .models import User, OfflinePayment
+from .extensions import db
 from utils.helpers import sanitize_input, validate_email
 from .quiz_controller import QuizController
 from .admin_controller import AdminController

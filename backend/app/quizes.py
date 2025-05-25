@@ -1,11 +1,13 @@
-from .models import Quiz
-from .quiz_controller import QuizController
-from flask_restful import Resource
-from flask import request, jsonify, make_response
-from utils.helpers import sanitize_input
-from flask_jwt_extended import jwt_required, get_jwt_identity
 import logging
-from .models import User
+from flask import request, jsonify
+from flask_restful import Resource
+from flask_jwt_extended import jwt_required, get_jwt_identity
+from .models import Quiz, User
+from .quiz_controller import QuizController
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from utils.helpers import sanitize_input
 
 class GetQuizzes(Resource):
     def get(self):

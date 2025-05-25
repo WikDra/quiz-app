@@ -5,7 +5,8 @@ import re
 from flask import current_app
 from flask_jwt_extended import get_jwt
 from utils.helpers import sanitize_input, validate_email
-from .models import User, db, BlacklistedToken
+from .models import User, BlacklistedToken
+from .extensions import db
 import logging
 from datetime import datetime, timedelta
 

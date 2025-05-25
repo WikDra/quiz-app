@@ -3,7 +3,8 @@ Admin controller for managing administrative functions
 """
 from flask import request, jsonify
 from flask_jwt_extended import get_jwt_identity
-from .models import User, OfflinePayment, StripeSubscription, Quiz, Payment, db
+from .models import User, OfflinePayment, StripeSubscription, Quiz, Payment
+from .extensions import db
 from .admin_middleware import get_current_admin_user
 from datetime import datetime, timedelta
 

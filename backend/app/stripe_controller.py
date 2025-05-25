@@ -4,7 +4,8 @@ import json
 from datetime import datetime, timedelta
 from flask import jsonify, request, current_app
 from flask_jwt_extended import jwt_required, get_jwt_identity
-from .models import db, User, StripeSubscription, _process_subscription_by_email
+from .models import User, StripeSubscription, _process_subscription_by_email
+from .extensions import db
 
 class StripeController:
     @staticmethod
