@@ -78,7 +78,7 @@ quiz-app/
 │   │   ├── setup_security.py    # Security Configuration
 │   │   └── scheduled_tasks.py   # Background Tasks
 │   │
-│   ├── tests/               # ✅ COMPREHENSIVE TEST SUITE (52% coverage)
+│   ├── tests/               # ✅ COMPREHENSIVE TEST SUITE (62% coverage)
 │   │   ├── conftest.py      # ✅ Test Configuration & Fixtures
 │   │   ├── test_admin.py    # ✅ Admin Panel Tests (12 failing)
 │   │   ├── test_auth.py     # ✅ Authentication Tests (11 failing)
@@ -111,7 +111,7 @@ quiz-app/
 - **⚡ STRIPE WEBHOOKS:** Dodana obsługa `invoice.payment_failed` z integracją admin dashboard
 
 ### ✅ **OSIĄGNIĘTE CELE:**
-- **🧪 TESTY:** 52% pokrycia kodu (111 passed, 45 failed) - **CEL 50% OSIĄGNIĘTY!**
+- **🧪 TESTY:** 62% pokrycia kodu (111 passed, 45 failed) - **CEL 50% OSIĄGNIĘTY!**
 - **🔧 OAuth Quiz Deletion:** Naprawiony permission checking dla OAuth users
 - **📋 Quiz Options Endpoint:** Dodany endpoint do pobierania pytań bez odpowiedzi
 - **🏛️ ADMIN DASHBOARD:** Panel administratora z naprawionymi endpointami i strukturą odpowiedzi
@@ -120,7 +120,6 @@ quiz-app/
 
 ### ⚠️ **ZNANE PROBLEMY (W TRAKCIE NAPRAWY):**
 - **🐛 Test Failures:** 45 testów wymaga naprawy (JSON serialization, Flask-RESTful responses, OAuth edge cases)
-- **📋 User List Display:** Admin panel pokazuje pustą listę użytkowników mimo 200 response
 - **🔧 JSON Serialization:** Problemy z serializacją JSONResponse objects w Flask-RESTful
 - **🔐 Auth Edge Cases:** Malformed requests, content type validation, input validation
 - **📊 Advanced Analytics:** Quiz statistics, user progress tracking
@@ -239,7 +238,7 @@ cd backend
 python -m pytest tests/ -v --cov=app --cov-report=term-missing
 
 # WYNIKI:
-# 📊 COVERAGE: 52% (CEL: 50% - OSIĄGNIĘTY!)
+# 📊 COVERAGE: 62% (CEL: 50% - OSIĄGNIĘTY!)
 # ✅ PASSED: 111 testów
 # ❌ FAILED: 45 testów (obejmuje JSON serialization, OAuth edge cases, admin endpoints)
 # 🔧 IN PROGRESS: Naprawy Flask-RESTful response handling w trakcie
@@ -247,18 +246,24 @@ python -m pytest tests/ -v --cov=app --cov-report=term-missing
 
 ### 🎯 **Test Coverage Breakdown:**
 - **app/__init__.py:** 83% coverage
-- **admin_controller.py:** 82% coverage
+- **admin_controller.py:** 82% coverage  
 - **admin_middleware.py:** 43% coverage
 - **extensions.py:** 100% coverage
-- **models.py:** 0% coverage (**LEGACY FILE** - not used, should be removed)
-- **models/ directory:** High coverage (93-100% across individual model files)
-- **payments.py:** 9% coverage
+- **models/__init__.py:** 100% coverage
+- **models/blacklisted_token.py:** 100% coverage
+- **models/helpers.py:** 78% coverage
+- **models/offline_payment.py:** 100% coverage
+- **models/payment.py:** 93% coverage
+- **models/quiz.py:** 100% coverage
+- **models/user.py:** 100% coverage
+- **payments.py:** 9% coverage (needs attention)
 - **quiz_controller.py:** 77% coverage
 - **quizes.py:** 66% coverage
 - **routes.py:** 63% coverage
-- **stripe_controller.py:** 0% coverage (legacy file)
 - **stripe_resources.py:** 40% coverage
 - **user_controller.py:** 45% coverage
+
+**TOTAL: 1588 statements, 611 missed, 62% coverage**
 
 ### 📋 **Testy zrealizowane:**
 - ✅ Model validation tests (User, Quiz, Payment, StripeSubscription)
@@ -309,7 +314,7 @@ python -m pytest tests/ -v --cov=app --cov-report=term-missing
 - ✅ **Social Media Login:** Google OAuth 2.0 pełna integracja
 - ✅ **Płatności elektroniczne:** Stripe z webhooks i subscription handling
 - ✅ **Offline payment approval:** Admin panel z zatwierdzaniem płatności
-- ✅ **Test Coverage:** 52% (wymagane minimum 50%) - **CEL OSIĄGNIĘTY!**
+- ✅ **Test Coverage:** 62% (wymagane minimum 50%) - **CEL OSIĄGNIĘTY!**
 
 ### ✅ **KOMPLETNIE ZREALIZOWANE:**
 - ✅ OAuth działa stabilnie (naprawione wielokrotne refreshy)
@@ -376,7 +381,7 @@ FRONTEND_URL=http://localhost:5173
 - ✅ Python backend (nie JavaScript)
 - ✅ Google OAuth social media login
 - ✅ Stripe payment system z offline approvals
-- ✅ 52% test coverage (powyżej wymaganego 50%)
+- ✅ 62% test coverage (powyżej wymaganego 50%)
 - ✅ W pełni funkcjonalny panel administratora
 
 **Status napraw (25.05.2025):**
