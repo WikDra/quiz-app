@@ -57,7 +57,8 @@ const AdminPanel = () => {
       
       if (response.ok) {
         const data = await response.json();
-        setDashboardStats(data.stats);      } else {
+        setDashboardStats(data);      
+      } else {
         setError('Failed to load dashboard stats');
         setDashboardStats(null);
       }
@@ -77,7 +78,7 @@ const AdminPanel = () => {
       });
         if (response.ok) {
         const data = await response.json();
-        setUsers(data.users || []);
+        setUsers(data || []);
       } else {
         setError('Failed to load users');
         setUsers([]);
