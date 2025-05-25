@@ -9,9 +9,9 @@ from dotenv import load_dotenv
 # Set up path to import from parent directory
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from models import db
-from models.user import User
-from models.quiz import Quiz
+from app.extensions import db
+from app.models.user import User
+from app.models.quiz import Quiz
 
 def create_app():
     """Create a minimal Flask app for database initialization"""

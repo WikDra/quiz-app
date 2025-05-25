@@ -158,9 +158,12 @@ def setup_jwt_blacklist_callbacks(jwt_manager):
             return True  # Block tokens without jti
         
         try:
-            # Convert user_id to int if it's a string
+            # Handle different user_id formats without converting large Google IDs to int
             if user_id and isinstance(user_id, str):
-                user_id = int(user_id)
+                # Only convert to int if it's a small number (regular user ID)
+                if user_id.isdigit() and len(user_id) < 10:  # Regular user IDs are typically < 10 digits
+                    user_id = int(user_id)
+                # For large numbers (Google IDs), keep as string to avoid SQLite overflow
         except (ValueError, TypeError):
             current_app.logger.warning(f"Invalid user_id in JWT payload: {user_id}")
             user_id = None

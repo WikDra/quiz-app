@@ -9,7 +9,8 @@ import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from app import create_app
-from app.models import User, db
+from app.models import User
+from app.extensions import db
 
 def create_admin_user():
     """Create the first admin user"""

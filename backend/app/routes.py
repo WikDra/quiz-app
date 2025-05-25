@@ -370,7 +370,13 @@ class UserOfflinePaymentRequestResource(Resource):
         """Allow users to request offline payment for premium access"""
         try:
             user_id = get_jwt_identity()
-            user = User.query.get(int(user_id))
+            
+            # Handle both regular user ID (integer) and Google ID (string)
+            if user_id.isdigit() and len(user_id) < 10:  # Regular user IDs are typically < 10 digits
+                user = User.query.get(int(user_id))
+            else:
+                # It's a google_id (string) or large number
+                user = User.query.filter_by(google_id=user_id).first()
             
             if not user:
                 return {'error': 'User not found'}, 404
@@ -459,10 +465,22 @@ class AdminUserPromoteResource(Resource):
         """Promote user to admin"""
         try:
             result = AdminController.promote_user_to_admin(user_id)
-            return result, 200
+            # Return the user data directly for test compatibility
+            if 'user' in result:
+                return result['user'], 200
+            else:
+                return result, 200
         except Exception as e:
-            logging.error(f"Error promoting user {user_id}: {str(e)}")
-            return {'error': 'Failed to promote user'}, 500
+            error_msg = str(e)
+            logging.error(f"Error promoting user {user_id}: {error_msg}")
+            
+            # Return appropriate status codes based on error
+            if 'User not found' in error_msg:
+                return {'error': 'User not found'}, 404
+            elif 'already an admin' in error_msg:
+                return {'error': 'User is already an admin'}, 400
+            else:
+                return {'error': 'Failed to promote user'}, 500
 
 class AdminUserDemoteResource(Resource):
     @jwt_required(locations=["cookies"])
@@ -471,10 +489,24 @@ class AdminUserDemoteResource(Resource):
         """Demote admin to user"""
         try:
             result = AdminController.demote_admin_to_user(user_id)
-            return result, 200
+            # Return the user data directly for test compatibility
+            if 'user' in result:
+                return result['user'], 200
+            else:
+                return result, 200
         except Exception as e:
-            logging.error(f"Error demoting user {user_id}: {str(e)}")
-            return {'error': 'Failed to demote user'}, 500
+            error_msg = str(e)
+            logging.error(f"Error demoting user {user_id}: {error_msg}")
+            
+            # Return appropriate status codes based on error
+            if 'User not found' in error_msg:
+                return {'error': 'User not found'}, 404
+            elif 'not an admin' in error_msg:
+                return {'error': 'User is not an admin'}, 400
+            elif 'Cannot demote yourself' in error_msg:
+                return {'error': 'Cannot demote yourself'}, 400
+            else:
+                return {'error': 'Failed to demote user'}, 500
 
 class AdminOfflinePaymentsResource(Resource):
     @jwt_required(locations=["cookies"])

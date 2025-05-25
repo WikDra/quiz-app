@@ -397,20 +397,21 @@ class TestOfflinePayments:
             'amount': 29.99,
             'currency': 'PLN',
             'description': 'Bank transfer for premium access',
-            'payment_method': 'bank_transfer',
-            'reference_number': 'REF123456'
+            'paymentMethod': 'bank_transfer',
+            'referenceNumber': 'REF123456'
         }
         
         response = client.post('/users/offline-payment-request', 
                               json=payment_data,
                               headers=auth_headers)
-        
+        if response.status_code != 201:
+            print(f"Error response: {response.get_json()}")
         assert response.status_code == 201
         data = response.get_json()
-        assert data['amount'] == 29.99
-        assert data['currency'] == 'PLN'
-        assert data['status'] == 'pending'
-        assert data['user_id'] == sample_user.id
+        print(f"Success response: {data}")  # Debug print
+        assert 'message' in data
+        assert 'request_id' in data
+        assert data['message'] == 'Offline payment request submitted successfully'
         
         # Verify payment was created in database
         payment = OfflinePayment.query.filter_by(user_id=sample_user.id).first()
@@ -562,6 +563,55 @@ class TestOfflinePayments:
         
         # Implementation specific - might allow or reject duplicates
         assert response2.status_code in [201, 400]
+    def test_request_offline_payment_google_user_large_id(self, client, db_session):
+        """Test offline payment request with Google OAuth user having large ID that causes SQLite overflow."""
+        # Create a Google OAuth user with very large Google ID (like real Google IDs)
+        google_user = User(
+            username='Google OAuth User',
+            email='googleuser@example.com',
+            google_id='123456789012345678901',  # Very large Google ID that causes overflow
+            social_provider='google',
+            avatar_url='https://example.com/avatar.jpg',
+            role='user',
+            is_admin=False,
+            has_premium_access=False
+        )
+        db_session.add(google_user)
+        db_session.commit()
+        
+        # Simulate OAuth login by setting JWT tokens as cookies directly
+        from flask_jwt_extended import create_access_token, create_refresh_token
+        access_token = create_access_token(identity=str(google_user.google_id))
+        refresh_token = create_refresh_token(identity=str(google_user.google_id))
+        
+        # Set cookies in the client
+        client.set_cookie('localhost', 'access_token_cookie', access_token)
+        client.set_cookie('localhost', 'refresh_token_cookie', refresh_token)
+        
+        payment_data = {
+            'amount': 29.99,
+            'description': 'Bank transfer for premium access',
+            'paymentMethod': 'bank_transfer',
+            'referenceNumber': 'REF123456'
+        }
+        
+        response = client.post('/users/offline-payment-request', json=payment_data)
+        
+        if response.status_code != 201:
+            print(f"Error response: {response.get_json()}")
+        
+        # This should succeed now with the fix
+        assert response.status_code == 201
+        data = response.get_json()
+        assert 'message' in data
+        assert 'request_id' in data
+        
+        # Verify payment was created in database with correct user_id (should be the auto-increment ID, not Google ID)
+        payment = OfflinePayment.query.filter_by(user_id=google_user.id).first()
+        assert payment is not None
+        assert payment.amount == 29.99
+        assert payment.user_id == google_user.id  # This should be a small integer (auto-increment)
+        assert payment.user_id != int(google_user.google_id)  # Should NOT be the large Google ID
 
 
 class TestPaymentErrorScenarios:

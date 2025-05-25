@@ -16,9 +16,17 @@ def admin_required(f):
             if not current_user_id:
                 return jsonify({'error': 'Authentication required'}), 401
             
-            user = User.query.get(current_user_id)
-            # If user not found by ID, try by google_id (for OAuth users)
-            if not user:
+            # Handle both regular user ID (integer) and Google ID (string)
+            if isinstance(current_user_id, str) and current_user_id.isdigit() and len(current_user_id) < 10:
+                user = User.query.get(int(current_user_id))
+            elif isinstance(current_user_id, int):
+                user = User.query.get(current_user_id)
+            else:
+                # It's a google_id (string)
+                user = User.query.filter_by(google_id=current_user_id).first()
+            
+            # If still not found and was a string that could be converted, try by google_id
+            if not user and isinstance(current_user_id, str):
                 user = User.query.filter_by(google_id=current_user_id).first()
             
             if not user:
@@ -43,7 +51,19 @@ def moderator_or_admin_required(f):
             if not current_user_id:
                 return jsonify({'error': 'Authentication required'}), 401
             
-            user = User.query.get(current_user_id)
+            # Handle both regular user ID (integer) and Google ID (string)
+            if isinstance(current_user_id, str) and current_user_id.isdigit() and len(current_user_id) < 10:
+                user = User.query.get(int(current_user_id))
+            elif isinstance(current_user_id, int):
+                user = User.query.get(current_user_id)
+            else:
+                # It's a google_id (string)
+                user = User.query.filter_by(google_id=current_user_id).first()
+            
+            # If still not found and was a string that could be converted, try by google_id
+            if not user and isinstance(current_user_id, str):
+                user = User.query.filter_by(google_id=current_user_id).first()
+            
             if not user:
                 return jsonify({'error': 'User not found'}), 404
             
@@ -63,7 +83,19 @@ def get_current_admin_user():
         if not current_user_id:
             return None
         
-        user = User.query.get(current_user_id)
+        # Handle both regular user ID (integer) and Google ID (string)
+        if isinstance(current_user_id, str) and current_user_id.isdigit() and len(current_user_id) < 10:
+            user = User.query.get(int(current_user_id))
+        elif isinstance(current_user_id, int):
+            user = User.query.get(current_user_id)
+        else:
+            # It's a google_id (string)
+            user = User.query.filter_by(google_id=current_user_id).first()
+        
+        # If still not found and was a string that could be converted, try by google_id
+        if not user and isinstance(current_user_id, str):
+            user = User.query.filter_by(google_id=current_user_id).first()
+        
         if user and user.is_admin_user():
             return user
         return None

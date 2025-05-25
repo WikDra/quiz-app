@@ -9,9 +9,20 @@ class Payment(db.Model):
     stripe_payment_intent_id = db.Column(db.String(100), nullable=False, unique=True)
     amount = db.Column(db.Float, nullable=False)
     status = db.Column(db.String(50), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     def __repr__(self):
         return f"<Payment {self.stripe_payment_intent_id} - {self.status}>"
+    
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'stripe_payment_intent_id': self.stripe_payment_intent_id,
+            'amount': self.amount,
+            'status': self.status,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'type': 'payment_intent'
+        }
 
 
 class StripeSubscription(db.Model):
